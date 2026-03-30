@@ -1,0 +1,19 @@
+{
+  "title": "Dashboard Numbers Display Incorrectly",
+  "severity": "P3",
+  "component": "dashboard",
+  "bug_type": "UI/UX Issue",
+  "affected_users": "[inferred: all users with access to dashboard]",
+  "reproduction_steps": [
+    "[generated] Open the dashboard and verify numbers display correctly.",
+    "[generated] Check if numbers are displayed as expected for different data ranges."
+  ],
+  "expected_behavior": "Numbers should be displayed accurately.",
+  "actual_behavior": "Numbers appear off or incorrect.",
+  "suggested_labels": [
+    "needs-human-review"
+  ],
+  "priority_reasoning": "Medium: report is vague but likely triage is still useful",
+  "suggested_assignee_team": "",
+  "confidence": "Low"
+}

@@ -1,0 +1,21 @@
+{
+  "title": "Mobile App Logout Issue",
+  "severity": "P2",
+  "component": "Mobile App",
+  "bug_type": "Login/Authentication",
+  "affected_users": "All users on the mobile app",
+  "reproduction_steps": [
+    "[generated] Open the mobile app and attempt to log in.",
+    "[generated] Wait for approximately 20 minutes without interacting with the app.",
+    "[generated] Attempt to log out of the app."
+  ],
+  "expected_behavior": "Successful login and logout",
+  "actual_behavior": "Random logout after 20 minutes",
+  "suggested_labels": [
+    "Mobile App Logout Issue",
+    "Login/Authentication Bug"
+  ],
+  "priority_reasoning": "High impact on user experience and support volume.",
+  "suggested_assignee_team": "Mobile App Development Team",
+  "confidence": "Medium"
+}

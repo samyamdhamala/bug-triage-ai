@@ -1,0 +1,21 @@
+{
+  "title": "Dashboard Numbers Display Issue",
+  "severity": "P3",
+  "component": "dashboard",
+  "bug_type": "display issue",
+  "affected_users": "[inferred: all users]",
+  "reproduction_steps": [
+    "[generated] Open the dashboard and verify numbers display correctly.",
+    "[generated] Check if numbers are displayed as expected for different data ranges."
+  ],
+  "expected_behavior": "numbers should be displayed accurately",
+  "actual_behavior": "numbers appear off",
+  "suggested_labels": [
+    "display issue",
+    "dashboard",
+    "needs-human-review"
+  ],
+  "priority_reasoning": "Medium: report is vague but likely triage is still useful",
+  "suggested_assignee_team": "",
+  "confidence": "Low"
+}

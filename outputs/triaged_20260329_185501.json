@@ -1,0 +1,19 @@
+{
+  "title": "Checkout issue with promo codes",
+  "severity": "P2",
+  "component": "Checkout",
+  "bug_type": "Feature not working as expected",
+  "affected_users": "Anyone using a coupon",
+  "reproduction_steps": [
+    "[generated] Open the checkout page with a promo code applied.",
+    "[generated] Verify that the discount is applied but the final charge is still full price."
+  ],
+  "expected_behavior": "Discount should be applied correctly and final charge should be zero.",
+  "actual_behavior": "Discount applies but final charge is full price.",
+  "suggested_labels": [
+    "Coupon issue"
+  ],
+  "priority_reasoning": "High impact on user experience, clear repro steps provided",
+  "suggested_assignee_team": "",
+  "confidence": "Medium"
+}

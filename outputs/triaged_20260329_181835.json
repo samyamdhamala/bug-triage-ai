@@ -1,0 +1,20 @@
+{
+  "title": "Dropdown Menu Overlap on Settings Page",
+  "severity": "P4",
+  "component": "Settings Page UI",
+  "bug_type": "UI Cosmetic Issue",
+  "affected_users": "[inferred: all users with screen size < 1280px]",
+  "reproduction_steps": [
+    "[generated] Open the settings page on a device with a screen size less than 1280px.",
+    "[generated] Click on the dropdown menu to trigger the overlap issue."
+  ],
+  "expected_behavior": "The dropdown menu should not overlap the save button.",
+  "actual_behavior": "The dropdown menu overlaps the save button on screens smaller than 1280px.",
+  "suggested_labels": [
+    "UI Cosmetic Issue",
+    "Screen Size"
+  ],
+  "priority_reasoning": "Low",
+  "suggested_assignee_team": "Frontend Team",
+  "confidence": "Medium"
+}

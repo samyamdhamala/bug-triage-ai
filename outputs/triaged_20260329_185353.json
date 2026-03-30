@@ -1,0 +1,21 @@
+{
+  "title": "Login issue in Safari 17 on Mac",
+  "severity": "P2",
+  "component": "Authentication",
+  "bug_type": "Login failure",
+  "affected_users": "~12 (design team)",
+  "reproduction_steps": [
+    "[generated] Click the login button in the application.",
+    "[generated] Verify that the spinner hangs after clicking submit.",
+    "[generated] Check the console for a CORS error."
+  ],
+  "expected_behavior": "Successful login",
+  "actual_behavior": "Login fails, spinner hangs, CORS error",
+  "suggested_labels": [
+    "CORS error",
+    "Login failure"
+  ],
+  "priority_reasoning": "High impact on design team, specific browser and OS mentioned.",
+  "suggested_assignee_team": "Auth Team",
+  "confidence": "Medium"
+}

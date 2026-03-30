@@ -1,0 +1,19 @@
+{
+  "title": "Login issue",
+  "severity": "P4",
+  "component": "Authentication",
+  "bug_type": "UX Friction",
+  "affected_users": "[inferred: all users]",
+  "reproduction_steps": [
+    "[generated] Open the application.",
+    "[generated] Attempt to log in with a valid username and password."
+  ],
+  "expected_behavior": "Successful login",
+  "actual_behavior": "Login fails",
+  "suggested_labels": [
+    "needs-human-review"
+  ],
+  "priority_reasoning": "",
+  "suggested_assignee_team": "Auth Team",
+  "confidence": "Low"
+}

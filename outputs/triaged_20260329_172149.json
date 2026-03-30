@@ -1,0 +1,21 @@
+{
+  "title": "Instagram Image Size Modify Not Working",
+  "severity": "P3",
+  "component": "Image Editing",
+  "bug_type": "Feature Degradation",
+  "affected_users": "5",
+  "reproduction_steps": [
+    "[generated] Open the app and navigate to the Instagram feed.",
+    "[generated] Tap on an image to edit it.",
+    "[generated] Attempt to modify the image size.",
+    "[generated] Verify that the image size modification is not working as expected."
+  ],
+  "expected_behavior": "Image size modification should work as expected.",
+  "actual_behavior": "Image size modification does not work.",
+  "suggested_labels": [
+    "Instagram Image Editing"
+  ],
+  "priority_reasoning": "Medium: Some ambiguity exists regarding the exact nature of the issue, but it's clear that image size modification is not working. Further investigation may be needed to determine the root cause.",
+  "suggested_assignee_team": "",
+  "confidence": "Medium"
+}

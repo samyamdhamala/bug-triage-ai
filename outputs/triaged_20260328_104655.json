@@ -1,0 +1,21 @@
+{
+  "title": "Payments and Checkout are Down for All Users",
+  "severity": "P1",
+  "component": "Payment Gateway [inferred]",
+  "bug_type": "Functional",
+  "affected_users": "All users",
+  "reproduction_steps": [
+    "[generated] 1. Attempt to checkout",
+    "[generated] 2. Observe payment processing"
+  ],
+  "expected_behavior": "Successful payment processing and checkout",
+  "actual_behavior": "Payments are completely down, preventing checkout",
+  "suggested_labels": [
+    "payment-issue",
+    "checkout-failure",
+    "urgent-review"
+  ],
+  "priority_reasoning": "Revenue is impacted and all users are affected",
+  "suggested_assignee_team": "Billing Team",
+  "confidence": "High"
+}

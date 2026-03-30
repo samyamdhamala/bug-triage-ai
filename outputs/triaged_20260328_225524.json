@@ -1,0 +1,22 @@
+{
+  "title": "Double charging issue on checkout",
+  "severity": "P1",
+  "component": "Payment Gateway [inferred]",
+  "bug_type": "Billing Issue",
+  "affected_users": "At least 50 customers",
+  "reproduction_steps": [
+    "[generated] 1. User initiates checkout process",
+    "[generated] 2. User completes payment information",
+    "[generated] 3. User submits payment"
+  ],
+  "expected_behavior": "Single charge on Stripe",
+  "actual_behavior": "Duplicate charges on Stripe",
+  "suggested_labels": [
+    "payment issue",
+    "stripe integration",
+    "urgent-review"
+  ],
+  "priority_reasoning": "Revenue impact and potential security breach",
+  "suggested_assignee_team": "Engineering",
+  "confidence": "High"
+}

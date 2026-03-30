@@ -1,0 +1,21 @@
+{
+  "title": "Payments Completely Down for All Users",
+  "severity": "P1",
+  "component": "Checkout/Payment Gateway",
+  "bug_type": "Service Unavailability",
+  "affected_users": "*",
+  "reproduction_steps": [
+    "[generated] Attempt to checkout with any payment method.",
+    "[generated] Verify that the error is a 500 response."
+  ],
+  "expected_behavior": "",
+  "actual_behavior": "500 error on every checkout attempt",
+  "suggested_labels": [
+    "payment-gateway",
+    "checkout",
+    "urgent-review"
+  ],
+  "priority_reasoning": "Revenue impact and immediate fix required",
+  "suggested_assignee_team": "Billing Team",
+  "confidence": "High"
+}

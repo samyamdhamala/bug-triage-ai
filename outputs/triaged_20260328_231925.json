@@ -1,0 +1,21 @@
+{
+  "title": "Login Button Throws 500 Error on Mobile After Latest Deploy",
+  "severity": "P2",
+  "component": "Mobile App",
+  "bug_type": "Error",
+  "affected_users": "[inferred: all mobile users]",
+  "reproduction_steps": [
+    "[generated] Open the app on a mobile device.",
+    "[generated] Tap the login button.",
+    "[generated] Observe the error message (500)."
+  ],
+  "expected_behavior": "",
+  "actual_behavior": "throws 500 error",
+  "suggested_labels": [
+    "Mobile App Bug",
+    "Login Issue"
+  ],
+  "priority_reasoning": "Business impact is real. Fix within 24-48h.",
+  "suggested_assignee_team": "Auth Team",
+  "confidence": "Medium"
+}

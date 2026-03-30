@@ -1,0 +1,21 @@
+{
+  "title": "Login issue after entering credentials",
+  "severity": "P2",
+  "component": "Authentication [inferred]",
+  "bug_type": "Functional [inferred]",
+  "affected_users": "Significant subset of users [inferred]",
+  "reproduction_steps": [
+    "[generated] 1. Go to the login page",
+    "[generated] 2. Enter valid credentials",
+    "[generated] 3. Click the login button"
+  ],
+  "expected_behavior": "Successful login",
+  "actual_behavior": "Spinner appears and nothing happens after entering credentials",
+  "suggested_labels": [
+    "Authentication issue",
+    "Post-deploy issue"
+  ],
+  "priority_reasoning": "contains multiple issues [inferred], impact on significant subset of users",
+  "suggested_assignee_team": "Auth Team",
+  "confidence": "Medium"
+}

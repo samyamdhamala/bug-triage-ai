@@ -1,0 +1,21 @@
+{
+  "title": "Intermittent export issue for enterprise client",
+  "severity": "P2",
+  "component": "Export feature [inferred]",
+  "bug_type": "Intermittent failure [inferred]",
+  "affected_users": "One enterprise client [inferred]",
+  "reproduction_steps": [
+    "[generated] Attempt to export data as the affected enterprise client",
+    "[generated] Verify that the export fails intermittently"
+  ],
+  "expected_behavior": "Export should work consistently",
+  "actual_behavior": "Export works sometimes, but fails other times",
+  "suggested_labels": [
+    "export issue",
+    "intermittent failure",
+    "api timeout [inferred]"
+  ],
+  "priority_reasoning": "contains multiple issues, but triaging the most severe one",
+  "suggested_assignee_team": "Backend Team",
+  "confidence": "Medium"
+}

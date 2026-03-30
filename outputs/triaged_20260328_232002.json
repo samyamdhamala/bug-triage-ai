@@ -1,0 +1,22 @@
+{
+  "title": "Double Charges During Checkout",
+  "severity": "P1",
+  "component": "Checkout/Stripe Integration",
+  "bug_type": "Payment Issue",
+  "affected_users": "50+ customers",
+  "reproduction_steps": [
+    "[generated] Open the checkout page and complete a payment transaction.",
+    "[generated] Verify that the correct amount is charged to the customer's card.",
+    "[generated] Repeat steps 1-2 multiple times to confirm the issue."
+  ],
+  "expected_behavior": "Correct charge for each transaction",
+  "actual_behavior": "Duplicate charges for each transaction",
+  "suggested_labels": [
+    "Stripe Payment Issue",
+    "Checkout Bug",
+    "urgent-review"
+  ],
+  "priority_reasoning": "High impact on customer experience and revenue. [rule: high impact keywords]",
+  "suggested_assignee_team": "Payment/Checkout Team",
+  "confidence": "Medium"
+}

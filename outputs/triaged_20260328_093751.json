@@ -1,0 +1,19 @@
+{
+  "title": "Login Spinner Stuck After Credentials",
+  "severity": "P4",
+  "component": "Authentication",
+  "bug_type": "UX Issue",
+  "affected_users": "[inferred: all users]",
+  "reproduction_steps": [
+    "[generated] Open the application.",
+    "[generated] Attempt to log in with valid credentials."
+  ],
+  "expected_behavior": "The login spinner should disappear after successful authentication.",
+  "actual_behavior": "The login spinner remains visible even after successful login.",
+  "suggested_labels": [
+    "needs-human-review"
+  ],
+  "priority_reasoning": "Medium",
+  "suggested_assignee_team": "Auth Team",
+  "confidence": "Low"
+}

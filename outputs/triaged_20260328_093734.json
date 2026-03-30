@@ -1,0 +1,19 @@
+{
+  "title": "Login issue with spinning spinner",
+  "severity": "P2",
+  "component": "Authentication",
+  "bug_type": "Login failure",
+  "affected_users": ">100 users",
+  "reproduction_steps": [
+    "[generated] Enter credentials on login page.",
+    "[generated] Observe the spinning spinner without any further action taken."
+  ],
+  "expected_behavior": "Successful login with credentials",
+  "actual_behavior": "Spinning spinner with no login functionality",
+  "suggested_labels": [
+    "Known issue with recent deployment"
+  ],
+  "priority_reasoning": "High impact on user experience and business operations",
+  "suggested_assignee_team": "Auth Team",
+  "confidence": "Medium"
+}

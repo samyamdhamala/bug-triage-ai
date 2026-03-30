@@ -1,0 +1,1 @@
+the save button on settings page is slightly misaligned on mobile. doesn't break anything but looks bad on iphone.

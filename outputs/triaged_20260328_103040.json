@@ -1,0 +1,20 @@
+{
+  "title": "Payments System Down - No Checkout Capability",
+  "severity": "P1",
+  "component": "E-commerce Payment Gateway",
+  "bug_type": "Functional Issue",
+  "affected_users": "All users",
+  "reproduction_steps": [
+    "Attempt to checkout on the website"
+  ],
+  "expected_behavior": "Checkout process should complete successfully without errors.",
+  "actual_behavior": "Payment processing fails, no ability to proceed with purchase.",
+  "suggested_labels": [
+    "Down Payments",
+    "E-commerce Issue",
+    "urgent-review"
+  ],
+  "priority_reasoning": "High impact on revenue and user experience due to immediate inability for transactions.",
+  "suggested_assignee_team": "Billing Team",
+  "confidence": "High"
+}

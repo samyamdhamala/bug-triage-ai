@@ -1,0 +1,20 @@
+{
+  "title": "Login Page Stuck on Safari",
+  "severity": "P2",
+  "component": "login",
+  "bug_type": "performance",
+  "affected_users": "12",
+  "reproduction_steps": [
+    "[generated] Open the application in Safari.",
+    "[generated] Attempt to log in.",
+    "[generated] Observe the submit button spinning indefinitely."
+  ],
+  "expected_behavior": "",
+  "actual_behavior": "submit button spins forever",
+  "suggested_labels": [
+    "CORS issue"
+  ],
+  "priority_reasoning": "High impact on user experience, specific browser and version mentioned.",
+  "suggested_assignee_team": "Auth Team",
+  "confidence": "Medium"
+}

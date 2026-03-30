@@ -1,0 +1,21 @@
+{
+  "title": "Payment Button Crash on Checkout Page",
+  "severity": "P1",
+  "component": "Checkout",
+  "bug_type": "Crash",
+  "affected_users": "All Users",
+  "reproduction_steps": [
+    "[generated] Open the checkout page in a browser.",
+    "[generated] Click the payment button.",
+    "[generated] Observe the application crash."
+  ],
+  "expected_behavior": "",
+  "actual_behavior": "Crash on payment button click",
+  "suggested_labels": [
+    "Known Payment Button Crash",
+    "urgent-review"
+  ],
+  "priority_reasoning": "Critical impact on user experience and potential revenue loss.",
+  "suggested_assignee_team": "Billing Team",
+  "confidence": "High"
+}
