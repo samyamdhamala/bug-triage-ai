@@ -5,6 +5,7 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from backend.triage import triage_bug
 from backend.jira_client import create_jira_ticket, find_duplicate
+from backend.vector_store import find_similar, store_embedding
 
 load_dotenv()
 
@@ -81,12 +82,20 @@ def handle_message(event, say, client):
             if confidence == "Low":
                 message += "\n\n:pause_button: *No Jira ticket created* — confidence too low. Please review and create manually if valid."
             else:
-                duplicate = find_duplicate(result)
-                if duplicate:
-                    message += f"\n\n:eyes: *Possible duplicate:* <{duplicate['url']}|{duplicate['key']}> — _{duplicate['title']}_\nNo new ticket created."
+                # Layer 1: vector similarity (semantic)
+                similar = find_similar(result)
+                if similar:
+                    message += f"\n\n:brain: *Semantic duplicate detected* ({similar['similarity']}% match): <{similar['jira_url']}|{similar['jira_key']}> — _{similar['title']}_\nNo new ticket created."
                 else:
-                    jira = create_jira_ticket(result)
-                    message += f"\n\n:jira: *Jira ticket created:* <{jira['url']}|{jira['key']}>"
+                    # Layer 2: Jira keyword search (catches tickets not yet in vector store)
+                    duplicate = find_duplicate(result)
+                    if duplicate:
+                        message += f"\n\n:eyes: *Possible duplicate:* <{duplicate['url']}|{duplicate['key']}> — _{duplicate['title']}_\nNo new ticket created."
+                    else:
+                        # Layer 3: create ticket + store embedding
+                        jira = create_jira_ticket(result)
+                        store_embedding(result, jira["key"], jira["url"])
+                        message += f"\n\n:jira: *Jira ticket created:* <{jira['url']}|{jira['key']}>"
         except Exception as jira_err:
             message += f"\n\n:warning: Jira ticket creation failed: {str(jira_err)}"
 
@@ -116,12 +125,20 @@ def handle_triage(ack, respond, command):
             if confidence == "Low":
                 message += "\n\n:pause_button: *No Jira ticket created* — confidence too low. Please review and create manually if valid."
             else:
-                duplicate = find_duplicate(result)
-                if duplicate:
-                    message += f"\n\n:eyes: *Possible duplicate detected:* <{duplicate['url']}|{duplicate['key']}> — _{duplicate['title']}_\nNo new ticket created."
+                # Layer 1: vector similarity (semantic)
+                similar = find_similar(result)
+                if similar:
+                    message += f"\n\n:brain: *Semantic duplicate detected* ({similar['similarity']}% match): <{similar['jira_url']}|{similar['jira_key']}> — _{similar['title']}_\nNo new ticket created."
                 else:
-                    jira = create_jira_ticket(result)
-                    message += f"\n\n:jira: *Jira ticket created:* <{jira['url']}|{jira['key']}>"
+                    # Layer 2: Jira keyword search
+                    duplicate = find_duplicate(result)
+                    if duplicate:
+                        message += f"\n\n:eyes: *Possible duplicate detected:* <{duplicate['url']}|{duplicate['key']}> — _{duplicate['title']}_\nNo new ticket created."
+                    else:
+                        # Layer 3: create ticket + store embedding
+                        jira = create_jira_ticket(result)
+                        store_embedding(result, jira["key"], jira["url"])
+                        message += f"\n\n:jira: *Jira ticket created:* <{jira['url']}|{jira['key']}>"
         except Exception as jira_err:
             message += f"\n\n:warning: Jira ticket creation failed: {str(jira_err)}"
 
