@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import List
+from typing import Any, Dict, List, Optional
 from enum import Enum
 
 class Severity(str, Enum):
@@ -33,4 +33,31 @@ class TriageOutput(BaseModel):
 
     class Config:
         extra = 'ignore'
+
+
+class CITriageRequest(BaseModel):
+    junit_xml: str = Field(..., description="JUnit XML string from CI test run")
+    branch: str = ""
+    commit_sha: str = ""
+    run_url: str = ""
+    max_failures: int = Field(default=10, ge=1, le=50, description="Cap on failures to triage per run")
+    create_tickets: bool = False
+
+
+class CITriageResult(BaseModel):
+    test_name: str
+    classname: str
+    failure_type: str
+    failure_message: str
+    triage: Dict[str, Any]
+    jira_ticket: Optional[str] = None
+
+
+class CITriageResponse(BaseModel):
+    total_failures_found: int
+    triaged_count: int
+    branch: str
+    commit_sha: str
+    run_url: str
+    results: List[CITriageResult]
 
