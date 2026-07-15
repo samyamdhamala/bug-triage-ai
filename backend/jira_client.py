@@ -13,40 +13,36 @@ SEVERITY_TO_PRIORITY = {
     "P4": "Low",
 }
 
+# Slightly higher threshold for Jira search since we compare full bug text
+# against Jira titles only (less context on the Jira side).
+JIRA_SIMILARITY_THRESHOLD = 0.72
 
-def find_duplicate(triage: dict) -> Optional[dict]:
-    """Search Jira for an existing open bug with the same component and similar title.
-    Returns {"key": ..., "url": ..., "title": ...} if a duplicate is found, else None.
+
+def find_similar_in_jira(triage: dict) -> Optional[dict]:
+    """Semantic duplicate search against open Jira bugs.
+
+    Fetches up to 50 recent open bugs from Jira, embeds their summaries,
+    and compares against the incoming triage using cosine similarity.
+    Catches duplicates that were created manually and are not yet in the
+    local vector store, including paraphrased or differently-worded reports.
+
+    Returns {"key": ..., "url": ..., "title": ..., "similarity": ...} or None.
     """
+    from .vector_store import embed_text, cosine_similarity, _bug_to_text
+
     base_url = os.environ["JIRA_BASE_URL"].rstrip("/")
     email = os.environ["JIRA_EMAIL"]
     api_token = os.environ["JIRA_API_TOKEN"]
     project_key = os.environ["JIRA_PROJECT_KEY"]
 
     auth = HTTPBasicAuth(email, api_token)
-    headers = {"Accept": "application/json"}
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
-    # Build search terms from title + component + bug_type for broader matching
-    STOPWORDS = {"with", "that", "this", "from", "have", "been", "when", "after", "into", "over", "some", "just"}
-    all_text = f"{triage.get('title', '')} {triage.get('component', '')} {triage.get('bug_type', '')}"
-    seen = set()
-    title_words = []
-    for w in all_text.lower().split():
-        if len(w) > 3 and w not in STOPWORDS and w not in seen:
-            seen.add(w)
-            title_words.append(w)
-
-    if not title_words:
-        return None
-
-    # Use top 3 keywords joined with OR for broader Jira search
-    text_clauses = " OR ".join(f'text ~ "{w}"' for w in title_words[:3])
-    jql = f'project = {project_key} AND issuetype = Bug AND statusCategory != Done AND ({text_clauses})'
-
+    jql = f"project = {project_key} AND issuetype = Bug AND statusCategory != Done ORDER BY created DESC"
     response = requests.post(
         f"{base_url}/rest/api/3/search/jql",
-        json={"jql": jql, "maxResults": 20, "fields": ["summary", "status"]},
-        headers={**headers, "Content-Type": "application/json"},
+        json={"jql": jql, "maxResults": 50, "fields": ["summary"]},
+        headers=headers,
         auth=auth,
     )
 
@@ -54,18 +50,37 @@ def find_duplicate(triage: dict) -> Optional[dict]:
         return None
 
     issues = response.json().get("issues", [])
+    if not issues:
+        return None
 
-    for issue in issues:
-        existing_title = issue["fields"]["summary"].lower()
-        # Check if enough title words overlap
-        matches = sum(1 for w in title_words if w in existing_title)
-        if matches >= 2:
-            issue_key = issue["key"]
-            return {
-                "key": issue_key,
-                "url": f"{base_url}/browse/{issue_key}",
-                "title": issue["fields"]["summary"],
-            }
+    incoming_text = _bug_to_text(triage)
+    if not incoming_text:
+        return None
+
+    incoming_embedding = embed_text(incoming_text)
+
+    # Batch embed all Jira summaries at once for efficiency
+    summaries = [issue["fields"]["summary"] for issue in issues]
+    from .vector_store import _get_model
+    summary_embeddings = _get_model().encode(summaries).tolist()
+
+    best_match = None
+    best_score = 0.0
+
+    for issue, summary_embedding in zip(issues, summary_embeddings):
+        score = cosine_similarity(incoming_embedding, summary_embedding)
+        if score > best_score:
+            best_score = score
+            best_match = issue
+
+    if best_score >= JIRA_SIMILARITY_THRESHOLD and best_match:
+        issue_key = best_match["key"]
+        return {
+            "key": issue_key,
+            "url": f"{base_url}/browse/{issue_key}",
+            "title": best_match["fields"]["summary"],
+            "similarity": round(best_score * 100, 1),
+        }
 
     return None
 

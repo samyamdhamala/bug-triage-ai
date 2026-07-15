@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 RULE_MAPPINGS = {
     # Team routing keywords -> team
     'auth': 'Auth Team',
-    'login': 'Auth Team', 
+    'login': 'Auth Team',
     'credential': 'Auth Team',
     'sign in': 'Auth Team',
     'billing': 'Billing Team',
@@ -21,6 +21,28 @@ RULE_MAPPINGS = {
     'timeout': 'Backend Team',
     'data': 'Backend Team',
     'backend': 'Backend Team',
+    # QA-specific signals -> QA Team
+    'regression': 'QA Team',
+    'flaky': 'QA Team',
+    'flake': 'QA Team',
+    'automation failure': 'QA Team',
+    'test failure': 'QA Team',
+    'test case': 'QA Team',
+    'smoke test': 'QA Team',
+    'e2e': 'QA Team',
+    'end-to-end': 'QA Team',
+    'ci failure': 'QA Team',
+    'pipeline failure': 'QA Team',
+    'blocker': 'QA Team',
+}
+
+# Maps assigned team -> relevant test suites a QA engineer should check/rerun
+TEAM_TEST_AREAS: Dict[str, List[str]] = {
+    'Auth Team':     ['auth_login_flow', 'session_management', 'password_reset', 'sso_flow'],
+    'Billing Team':  ['payment_checkout_flow', 'invoice_generation', 'subscription_upgrade_downgrade'],
+    'Frontend Team': ['ui_smoke_tests', 'cross_browser_compat', 'responsive_layout'],
+    'Backend Team':  ['api_contract_tests', 'data_integrity', 'performance_regression'],
+    'QA Team':       ['full_regression_suite', 'automation_health_check', 'flaky_test_audit'],
 }
 
 def apply_team_routing(triage: Dict[str, Any]) -> str:
@@ -63,10 +85,16 @@ def add_review_labels(triage: Dict[str, Any]) -> List[str]:
     
     return labels
 
+def suggest_test_areas(triage: Dict[str, Any]) -> List[str]:
+    """Return test suites a QA engineer should rerun, based on routed team."""
+    team = triage.get('suggested_assignee_team', '')
+    return TEAM_TEST_AREAS.get(team, ['smoke_tests'])
+
 def enhance_triage(triage: Dict[str, Any]) -> Dict[str, Any]:
     """Apply all rules post-LLM."""
     triage['suggested_assignee_team'] = apply_team_routing(triage)
     triage['severity'], triage['priority_reasoning'] = apply_severity_hints(triage)
     triage['suggested_labels'] = add_review_labels(triage)
+    triage['related_test_areas'] = suggest_test_areas(triage)
     return triage
 

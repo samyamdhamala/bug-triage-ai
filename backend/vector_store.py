@@ -49,10 +49,15 @@ def _bug_to_text(triage: dict) -> str:
     return " ".join(p for p in parts if p).strip()
 
 
-def _cosine_similarity(a: list, b: list) -> float:
+def cosine_similarity(a: list, b: list) -> float:
     va = np.array(a)
     vb = np.array(b)
     return float(np.dot(va, vb) / (np.linalg.norm(va) * np.linalg.norm(vb)))
+
+
+def embed_text(text: str) -> list:
+    """Encode a string into an embedding vector using the shared model."""
+    return _get_model().encode(text).tolist()
 
 
 def find_similar(triage: dict) -> Optional[dict]:
@@ -64,18 +69,17 @@ def find_similar(triage: dict) -> Optional[dict]:
     if not store:
         return None
 
-    model = _get_model()
     text = _bug_to_text(triage)
     if not text:
         return None
 
-    embedding = model.encode(text).tolist()
+    embedding = embed_text(text)
 
     best_match = None
     best_score = 0.0
 
     for entry in store:
-        score = _cosine_similarity(embedding, entry["embedding"])
+        score = cosine_similarity(embedding, entry["embedding"])
         if score > best_score:
             best_score = score
             best_match = entry
@@ -93,12 +97,11 @@ def find_similar(triage: dict) -> Optional[dict]:
 
 def store_embedding(triage: dict, jira_key: str, jira_url: str) -> None:
     """Save a new bug embedding after its Jira ticket is created."""
-    model = _get_model()
     text = _bug_to_text(triage)
     if not text:
         return
 
-    embedding = model.encode(text).tolist()
+    embedding = embed_text(text)
     store = _load_store()
 
     store.append({

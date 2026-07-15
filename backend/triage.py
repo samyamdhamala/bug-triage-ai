@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from .models import TriageOutput
 from .llm_client import generate_structured_ticket
 from .rules import enhance_triage
+from .feedback_store import format_feedback_for_prompt
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -27,28 +28,18 @@ def load_prompt() -> str:
     with open(PROMPT_PATH, 'r') as f:
         return f.read()
 
-def parse_json_or_retry(response: str, original_bug: str = None) -> Dict[str, Any]:
+def parse_llm_response(response: str) -> Dict[str, Any]:
+    """Parse the LLM JSON response.
+
+    All providers now return valid JSON via structured output modes, so a
+    straight json.loads is sufficient. A JSONDecodeError here means the
+    provider ignored the format constraint — surface it clearly rather than
+    masking it with a second LLM call.
+    """
     try:
-        start = response.find('{')
-        end = response.rfind('}') + 1
-        json_str = response[start:end] if start != -1 else response
-        return json.loads(json_str)
+        return json.loads(response)
     except json.JSONDecodeError as e:
-        logger.warning(f"JSON parse failed: {e}. Retrying with simple prompt.")
-        bug_to_use = original_bug if original_bug else response[:1000]
-        simple_prompt = f'''Convert this bug report to valid JSON. Return ONLY the JSON, no markdown.
-
-Bug report: {bug_to_use}
-
-Required fields: title, severity (P1-P4), component, bug_type, affected_users, reproduction_steps (array), expected_behavior, actual_behavior, suggested_labels (array), priority_reasoning, suggested_assignee_team, confidence (High/Medium/Low).'''
-        retry_response = generate_structured_ticket(simple_prompt)
-        try:
-            start = retry_response.find('{')
-            end = retry_response.rfind('}') + 1
-            json_str = retry_response[start:end] if start != -1 else retry_response
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            raise ValueError("Both initial and retry JSON parsing failed. LLM output invalid.")
+        raise ValueError(f"LLM returned invalid JSON (provider may not support structured outputs): {e}")
 
 def triage_bug(raw_text: str, save_output: bool = False) -> Dict[str, Any]:
     '''Main triage function.
@@ -64,14 +55,17 @@ def triage_bug(raw_text: str, save_output: bool = False) -> Dict[str, Any]:
         raise ValueError("Bug text cannot be empty")
     
     prompt_template = load_prompt()
+    feedback_block = format_feedback_for_prompt(n=5)
     prompt = prompt_template.replace('{{RAW_INPUT}}', raw_text)
+    if feedback_block:
+        prompt = prompt.replace("BUG REPORT:", feedback_block + "BUG REPORT:", 1)
     
     # LLM call
     llm_response = generate_structured_ticket(prompt)
     logger.info("LLM response received")
     
     # Parse + validate
-    triage_data = parse_json_or_retry(llm_response, original_bug=raw_text)
+    triage_data = parse_llm_response(llm_response)
     try:
         output = TriageOutput(**triage_data)
     except ValidationError as e:

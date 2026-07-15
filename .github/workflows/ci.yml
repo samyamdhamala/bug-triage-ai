@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Validate .env.example has required keys
+        run: |
+          python - <<'EOF'
+          required = [
+            "LLM_PROVIDER", "OPENAI_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY",
+            "OLLAMA_BASE_URL", "OLLAMA_MODEL",
+            "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_BUGS_CHANNEL",
+            "JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY",
+          ]
+          with open(".env.example") as f:
+              keys = {line.split("=")[0].strip() for line in f if "=" in line and not line.startswith("#")}
+          missing = [k for k in required if k not in keys]
+          if missing:
+              raise SystemExit(f".env.example is missing keys: {missing}")
+          print("✓ .env.example has all required keys")
+          EOF
+
+      - name: Run unit tests
+        run: pytest tests/ -v --tb=short

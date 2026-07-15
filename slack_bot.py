@@ -4,8 +4,9 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from backend.triage import triage_bug
-from backend.jira_client import create_jira_ticket, find_duplicate
+from backend.jira_client import create_jira_ticket, find_similar_in_jira
 from backend.vector_store import find_similar, store_embedding
+from backend.feedback_store import save_feedback
 
 load_dotenv()
 
@@ -46,6 +47,35 @@ def format_slack_message(result: dict) -> str:
 BOT_USER_ID = None  # populated on startup to avoid self-triaging bot messages
 
 
+def _build_jira_suffix(result: dict) -> str:
+    """Run the two-layer dedup pipeline and return a Slack message suffix."""
+    confidence = result.get("confidence", "Medium")
+
+    if confidence == "Low":
+        return "\n\n:pause_button: *No Jira ticket created* — confidence too low. Please review and create manually if valid."
+
+    # Layer 1: local vector store (semantic, fast)
+    similar = find_similar(result)
+    if similar:
+        return (
+            f"\n\n:brain: *Semantic duplicate detected* ({similar['similarity']}% match): "
+            f"<{similar['jira_url']}|{similar['jira_key']}> — _{similar['title']}_\nNo new ticket created."
+        )
+
+    # Layer 2: Jira semantic search (catches manually-created tickets not yet in vector store)
+    jira_dup = find_similar_in_jira(result)
+    if jira_dup:
+        return (
+            f"\n\n:brain: *Semantic duplicate found in Jira* ({jira_dup['similarity']}% match): "
+            f"<{jira_dup['url']}|{jira_dup['key']}> — _{jira_dup['title']}_\nNo new ticket created."
+        )
+
+    # Layer 3: no duplicate — create ticket and store embedding
+    jira = create_jira_ticket(result)
+    store_embedding(result, jira["key"], jira["url"])
+    return f"\n\n:jira: *Jira ticket created:* <{jira['url']}|{jira['key']}>"
+
+
 @app.event("message")
 def handle_message(event, say, client):
     # Ignore bot messages, edits, deletions, and thread replies
@@ -75,30 +105,10 @@ def handle_message(event, say, client):
     try:
         result = triage_bug(text, save_output=True)
         message = format_slack_message(result)
-
-        confidence = result.get("confidence", "Medium")
-
         try:
-            if confidence == "Low":
-                message += "\n\n:pause_button: *No Jira ticket created* — confidence too low. Please review and create manually if valid."
-            else:
-                # Layer 1: vector similarity (semantic)
-                similar = find_similar(result)
-                if similar:
-                    message += f"\n\n:brain: *Semantic duplicate detected* ({similar['similarity']}% match): <{similar['jira_url']}|{similar['jira_key']}> — _{similar['title']}_\nNo new ticket created."
-                else:
-                    # Layer 2: Jira keyword search (catches tickets not yet in vector store)
-                    duplicate = find_duplicate(result)
-                    if duplicate:
-                        message += f"\n\n:eyes: *Possible duplicate:* <{duplicate['url']}|{duplicate['key']}> — _{duplicate['title']}_\nNo new ticket created."
-                    else:
-                        # Layer 3: create ticket + store embedding
-                        jira = create_jira_ticket(result)
-                        store_embedding(result, jira["key"], jira["url"])
-                        message += f"\n\n:jira: *Jira ticket created:* <{jira['url']}|{jira['key']}>"
+            message += _build_jira_suffix(result)
         except Exception as jira_err:
             message += f"\n\n:warning: Jira ticket creation failed: {str(jira_err)}"
-
         say(message, thread_ts=event["ts"])
     except Exception as e:
         say(f":x: Triage failed: {str(e)}", thread_ts=event["ts"])
@@ -118,33 +128,46 @@ def handle_triage(ack, respond, command):
     try:
         result = triage_bug(bug_text, save_output=True)
         message = format_slack_message(result)
-
-        confidence = result.get("confidence", "Medium")
-
         try:
-            if confidence == "Low":
-                message += "\n\n:pause_button: *No Jira ticket created* — confidence too low. Please review and create manually if valid."
-            else:
-                # Layer 1: vector similarity (semantic)
-                similar = find_similar(result)
-                if similar:
-                    message += f"\n\n:brain: *Semantic duplicate detected* ({similar['similarity']}% match): <{similar['jira_url']}|{similar['jira_key']}> — _{similar['title']}_\nNo new ticket created."
-                else:
-                    # Layer 2: Jira keyword search
-                    duplicate = find_duplicate(result)
-                    if duplicate:
-                        message += f"\n\n:eyes: *Possible duplicate detected:* <{duplicate['url']}|{duplicate['key']}> — _{duplicate['title']}_\nNo new ticket created."
-                    else:
-                        # Layer 3: create ticket + store embedding
-                        jira = create_jira_ticket(result)
-                        store_embedding(result, jira["key"], jira["url"])
-                        message += f"\n\n:jira: *Jira ticket created:* <{jira['url']}|{jira['key']}>"
+            message += _build_jira_suffix(result)
         except Exception as jira_err:
             message += f"\n\n:warning: Jira ticket creation failed: {str(jira_err)}"
-
         respond(message)
     except Exception as e:
         respond(f":x: Triage failed: {str(e)}")
+
+
+@app.command("/feedback")
+def handle_feedback(ack, respond, command):
+    """Record a QA correction for a previously triaged bug.
+
+    Usage: /feedback BT-123 Severity should be P1, affected all users
+    The correction is stored and injected into future triage prompts.
+    """
+    ack()
+
+    text = command.get("text", "").strip()
+    if not text:
+        respond(
+            "Usage: `/feedback <JIRA-KEY> <correction>`\n"
+            "Example: `/feedback BT-42 Severity should be P1, this was affecting all paying users`"
+        )
+        return
+
+    parts = text.split(None, 1)
+    if len(parts) < 2:
+        respond(":x: Please include both a Jira key and a correction comment.\nExample: `/feedback BT-42 Team should be QA not Backend`")
+        return
+
+    jira_key, comment = parts[0], parts[1]
+    corrected_by = command.get("user_id", "unknown")
+
+    save_feedback(jira_key=jira_key, comment=comment, corrected_by=corrected_by)
+    respond(
+        f":white_check_mark: Correction saved for *{jira_key.upper()}*.\n"
+        f"> {comment}\n"
+        "This will be applied to future triage prompts automatically."
+    )
 
 
 if __name__ == "__main__":

@@ -29,6 +29,7 @@ class TriageOutput(BaseModel):
     priority_reasoning: str = ""
     suggested_assignee_team: str
     confidence: Confidence
+    related_test_areas: List[str] = Field(default_factory=list)
 
     class Config:
         extra = 'ignore'
