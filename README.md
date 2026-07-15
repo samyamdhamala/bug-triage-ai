@@ -4,6 +4,8 @@ Converts unstructured bug reports and CI test failures into structured, actionab
 
 Built by a QA Automation Engineer to eliminate the manual triage bottleneck between "bug reported" and "engineer assigned."
 
+![Bug Triage AI demo](demo.gif)
+
 ---
 
 ## What it does
