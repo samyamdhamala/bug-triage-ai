@@ -1,5 +1,7 @@
 import os
+from contextlib import contextmanager
 from functools import lru_cache
+from typing import Iterator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -18,6 +20,16 @@ def _session_factory() -> sessionmaker:
 
 def get_db():
     """FastAPI dependency: yields a request-scoped session, always closed after."""
+    db: Session = _session_factory()()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@contextmanager
+def get_session() -> Iterator[Session]:
+    """Context-managed session for non-FastAPI call sites (scripts, the Slack bot)."""
     db: Session = _session_factory()()
     try:
         yield db

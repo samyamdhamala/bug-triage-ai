@@ -1,24 +1,23 @@
 import json
-import os
-from datetime import datetime
-from typing import Dict, Any
-from pathlib import Path
+import uuid
 import logging
+from pathlib import Path
+from typing import Dict, Any
 
 from dotenv import load_dotenv
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from .models import TriageOutput
 from .llm_client import generate_structured_ticket
 from .rules import enhance_triage
+from .db import crud
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 PROMPT_PATH = Path(__file__).parent / 'prompt.txt'
-OUTPUTS_DIR = Path(__file__).parent.parent / 'outputs'
-OUTPUTS_DIR.mkdir(exist_ok=True)
 
 def load_prompt() -> str:
     '''Load prompt template from file.'''
@@ -50,8 +49,10 @@ Required fields: title, severity (P1-P4), component, bug_type, affected_users, r
         except json.JSONDecodeError:
             raise ValueError("Both initial and retry JSON parsing failed. LLM output invalid.")
 
-def triage_bug(raw_text: str, save_output: bool = False) -> Dict[str, Any]:
-    '''Main triage function.
+def triage_bug(db: Session, org_id: uuid.UUID, raw_text: str, save_output: bool = False) -> Dict[str, Any]:
+    '''Main triage function. Persists the result as a Triage row when save_output=True,
+    returning the enhanced triage dict plus an internal "_triage_id" for callers that
+    go on to create a Jira ticket / store an embedding (jira_client.py, vector_store.py).
 
     Failure modes (for humans):
     - Vague reports -> low confidence (review required)
@@ -62,14 +63,14 @@ def triage_bug(raw_text: str, save_output: bool = False) -> Dict[str, Any]:
     '''
     if not raw_text.strip():
         raise ValueError("Bug text cannot be empty")
-    
+
     prompt_template = load_prompt()
     prompt = prompt_template.replace('{{RAW_INPUT}}', raw_text)
-    
+
     # LLM call
     llm_response = generate_structured_ticket(prompt)
     logger.info("LLM response received")
-    
+
     # Parse + validate
     triage_data = parse_json_or_retry(llm_response, original_bug=raw_text)
     try:
@@ -77,17 +78,14 @@ def triage_bug(raw_text: str, save_output: bool = False) -> Dict[str, Any]:
     except ValidationError as e:
         logger.error(f"Pydantic validation failed: {e}")
         raise ValueError(f"Invalid triage structure: {e}")
-    
+
     # Rule enhancements
     enhanced = enhance_triage(output.model_dump())
-    
-    # Save if requested
-    if save_output:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_path = OUTPUTS_DIR / f'triaged_{timestamp}.json'
-        with open(output_path, 'w') as f:
-            json.dump(enhanced, f, indent=2)
-        logger.info(f"Saved to {output_path}")
-    
-    return enhanced
 
+    # Persist
+    if save_output:
+        triage_row = crud.create_triage(db, org_id=org_id, raw_text=raw_text, triage=enhanced)
+        logger.info(f"Saved triage {triage_row.id} for org {org_id}")
+        enhanced['_triage_id'] = triage_row.id
+
+    return enhanced

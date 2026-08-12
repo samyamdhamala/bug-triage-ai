@@ -60,9 +60,12 @@ class JiraIntegration(Base):
     base_url: Mapped[str] = mapped_column(String(500))
     cloud_id: Mapped[str] = mapped_column(String(255), default="")
     project_key: Mapped[str] = mapped_column(String(50))
-    # OAuth 2.0 (3LO) tokens, Fernet-encrypted before storage.
+    # Classic auth (email + API token) for now; encrypted_refresh_token stays null
+    # until this moves to OAuth 2.0 (3LO), which will populate it and email becomes
+    # unused. encrypted_access_token holds the API token in the classic case.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     encrypted_access_token: Mapped[str] = mapped_column(Text)
-    encrypted_refresh_token: Mapped[str] = mapped_column(Text)
+    encrypted_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
     connected_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

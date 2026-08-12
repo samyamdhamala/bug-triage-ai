@@ -1,18 +1,19 @@
 """
 Vector similarity store for semantic duplicate detection.
-Embeds bug reports using sentence-transformers and compares via cosine similarity.
-Much more accurate than keyword matching — catches duplicates even with different wording.
+Embeds bug reports using sentence-transformers and compares via pgvector cosine
+distance (backend/db/models.py::BugEmbedding). Much more accurate than keyword
+matching — catches duplicates even with different wording.
 """
 
-import json
-import os
-import numpy as np
-from pathlib import Path
+import uuid
 from typing import Optional
-from sentence_transformers import SentenceTransformer
 
-STORE_PATH = Path(__file__).parent.parent / "outputs" / "vector_store.json"
-MODEL_NAME = "all-MiniLM-L6-v2"  # ~80MB, fast, accurate for semantic similarity
+from sentence_transformers import SentenceTransformer
+from sqlalchemy.orm import Session
+
+from .db import crud
+
+MODEL_NAME = "all-MiniLM-L6-v2"  # ~80MB, fast, accurate for semantic similarity; 384-dim
 SIMILARITY_THRESHOLD = 0.68  # 0.0 - 1.0, higher = stricter matching
 
 _model = None
@@ -23,19 +24,6 @@ def _get_model() -> SentenceTransformer:
     if _model is None:
         _model = SentenceTransformer(MODEL_NAME)
     return _model
-
-
-def _load_store() -> list:
-    if not STORE_PATH.exists():
-        return []
-    with open(STORE_PATH, "r") as f:
-        return json.load(f)
-
-
-def _save_store(store: list) -> None:
-    STORE_PATH.parent.mkdir(exist_ok=True)
-    with open(STORE_PATH, "w") as f:
-        json.dump(store, f, indent=2)
 
 
 def _bug_to_text(triage: dict) -> str:
@@ -49,64 +37,33 @@ def _bug_to_text(triage: dict) -> str:
     return " ".join(p for p in parts if p).strip()
 
 
-def _cosine_similarity(a: list, b: list) -> float:
-    va = np.array(a)
-    vb = np.array(b)
-    return float(np.dot(va, vb) / (np.linalg.norm(va) * np.linalg.norm(vb)))
-
-
-def find_similar(triage: dict) -> Optional[dict]:
+def find_similar(db: Session, org_id: uuid.UUID, triage: dict) -> Optional[dict]:
     """
-    Compare triage against stored embeddings.
-    Returns {"jira_key": ..., "title": ..., "similarity": ...} if duplicate found, else None.
+    Compare triage against stored embeddings for this org.
+    Returns {"jira_key": ..., "jira_url": ..., "title": ..., "similarity": ...} if a
+    duplicate is found, else None.
     """
-    store = _load_store()
-    if not store:
-        return None
-
-    model = _get_model()
     text = _bug_to_text(triage)
     if not text:
         return None
 
-    embedding = model.encode(text).tolist()
-
-    best_match = None
-    best_score = 0.0
-
-    for entry in store:
-        score = _cosine_similarity(embedding, entry["embedding"])
-        if score > best_score:
-            best_score = score
-            best_match = entry
-
-    if best_score >= SIMILARITY_THRESHOLD and best_match:
-        return {
-            "jira_key": best_match["jira_key"],
-            "jira_url": best_match["jira_url"],
-            "title": best_match["title"],
-            "similarity": round(best_score * 100, 1),
-        }
-
-    return None
+    embedding = _get_model().encode(text).tolist()
+    return crud.find_similar_embedding(db, org_id, embedding, SIMILARITY_THRESHOLD)
 
 
-def store_embedding(triage: dict, jira_key: str, jira_url: str) -> None:
+def store_embedding(db: Session, org_id: uuid.UUID, triage_id: uuid.UUID, triage: dict, jira_key: str, jira_url: str) -> None:
     """Save a new bug embedding after its Jira ticket is created."""
-    model = _get_model()
     text = _bug_to_text(triage)
     if not text:
         return
 
-    embedding = model.encode(text).tolist()
-    store = _load_store()
-
-    store.append({
-        "jira_key": jira_key,
-        "jira_url": jira_url,
-        "title": triage.get("title", ""),
-        "text": text,
-        "embedding": embedding,
-    })
-
-    _save_store(store)
+    embedding = _get_model().encode(text).tolist()
+    crud.store_embedding(
+        db,
+        org_id=org_id,
+        triage_id=triage_id,
+        jira_key=jira_key,
+        jira_url=jira_url,
+        title=triage.get("title", ""),
+        embedding=embedding,
+    )

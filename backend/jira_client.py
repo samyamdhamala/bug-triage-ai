@@ -1,10 +1,11 @@
-import os
+import uuid
 from typing import Optional
+
 import requests
 from requests.auth import HTTPBasicAuth
-from dotenv import load_dotenv
+from sqlalchemy.orm import Session
 
-load_dotenv()
+from .db import crud
 
 SEVERITY_TO_PRIORITY = {
     "P1": "Highest",
@@ -14,16 +15,19 @@ SEVERITY_TO_PRIORITY = {
 }
 
 
-def find_duplicate(triage: dict) -> Optional[dict]:
+def _auth_for_org(db: Session, org_id: uuid.UUID) -> tuple[HTTPBasicAuth, str, str]:
+    """Returns (auth, base_url, project_key) for the org's Jira integration."""
+    creds = crud.get_jira_creds(db, org_id)
+    if creds is None:
+        raise ValueError("No Jira integration configured for this org")
+    return HTTPBasicAuth(creds.email, creds.api_token), creds.base_url, creds.project_key
+
+
+def find_duplicate(db: Session, org_id: uuid.UUID, triage: dict) -> Optional[dict]:
     """Search Jira for an existing open bug with the same component and similar title.
     Returns {"key": ..., "url": ..., "title": ...} if a duplicate is found, else None.
     """
-    base_url = os.environ["JIRA_BASE_URL"].rstrip("/")
-    email = os.environ["JIRA_EMAIL"]
-    api_token = os.environ["JIRA_API_TOKEN"]
-    project_key = os.environ["JIRA_PROJECT_KEY"]
-
-    auth = HTTPBasicAuth(email, api_token)
+    auth, base_url, project_key = _auth_for_org(db, org_id)
     headers = {"Accept": "application/json"}
 
     # Build search terms from title + component + bug_type for broader matching
@@ -70,14 +74,9 @@ def find_duplicate(triage: dict) -> Optional[dict]:
     return None
 
 
-def create_jira_ticket(triage: dict) -> dict:
+def create_jira_ticket(db: Session, org_id: uuid.UUID, triage: dict) -> dict:
     """Create a Jira issue from a triage result. Returns the created issue key and URL."""
-    base_url = os.environ["JIRA_BASE_URL"].rstrip("/")
-    email = os.environ["JIRA_EMAIL"]
-    api_token = os.environ["JIRA_API_TOKEN"]
-    project_key = os.environ["JIRA_PROJECT_KEY"]
-
-    auth = HTTPBasicAuth(email, api_token)
+    auth, base_url, project_key = _auth_for_org(db, org_id)
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
     severity = triage.get("severity", "P3")
