@@ -82,8 +82,31 @@ Labels: ['urgent-review']
 ## Roadmap
 - Bug trend dashboards
 - Feedback loop: learn from engineer edits
-- Vector similarity for smarter duplicate detection
+- ~~Vector similarity for smarter duplicate detection~~ done ([sentence-transformers](backend/vector_store.py), migrating to pgvector below)
 - Auto-regression test generation
+
+## Multi-tenant data layer (in progress)
+Schema for moving off flat-file storage (`outputs/*.json`, `vector_store.json`) and
+single-org `.env` credentials, toward one Postgres database shared by multiple orgs:
+
+- **Tables** (`backend/db/models.py`): `orgs`, `users`, `jira_integrations`,
+  `slack_integrations`, `triages`, `bug_embeddings` — everything scoped by `org_id`.
+- **Embeddings**: `bug_embeddings.embedding` is a pgvector column (384-dim,
+  matching `all-MiniLM-L6-v2`) with an HNSW index, replacing `vector_store.json`.
+- **Credentials**: Jira/Slack tokens are stored encrypted (`backend/db/crypto.py`,
+  Fernet) rather than in a shared `.env` — each org will get its own connection.
+
+Setup (free tier):
+1. Create a project at [supabase.com](https://supabase.com) (free Postgres + pgvector included).
+2. Copy the connection string from *Project Settings → Database → Connection string → URI*,
+   swap `postgresql://` for `postgresql+psycopg://`, and set it as `DATABASE_URL` in `.env`.
+3. Generate an encryption key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+   and set it as `ENCRYPTION_KEY` in `.env`.
+4. Run migrations: `alembic upgrade head`.
+
+Not yet wired up: `triage.py`/`jira_client.py`/`slack_bot.py` still read from
+flat files and a single `.env`'s worth of credentials — the schema exists but the
+app code hasn't been switched over to per-org lookups yet.
 
 ## Troubleshooting
 - API key invalid → 422 error
