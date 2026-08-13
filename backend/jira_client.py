@@ -6,6 +6,7 @@ from requests.auth import HTTPBasicAuth
 from sqlalchemy.orm import Session
 
 from .db import crud
+from .oauth import jira as jira_oauth
 
 SEVERITY_TO_PRIORITY = {
     "P1": "Highest",
@@ -15,20 +16,38 @@ SEVERITY_TO_PRIORITY = {
 }
 
 
-def _auth_for_org(db: Session, org_id: uuid.UUID) -> tuple[HTTPBasicAuth, str, str]:
-    """Returns (auth, base_url, project_key) for the org's Jira integration."""
-    creds = crud.get_jira_creds(db, org_id)
-    if creds is None:
+def _connection_for_org(db: Session, org_id: uuid.UUID) -> tuple[str, str, str, Optional[HTTPBasicAuth], dict]:
+    """Returns (request_base_url, browse_base_url, project_key, auth, extra_headers)
+    for the org's Jira integration, whichever auth mode it's using:
+    - classic (email set): HTTPBasicAuth directly against the org's own Jira site —
+      request and browse URLs are the same host.
+    - OAuth 2.0 (integration.encrypted_refresh_token set): Bearer token, requests go
+      through api.atlassian.com's proxy host but browse links must still point at the
+      real site (integration.base_url), or they 404 for users clicking them.
+    Refreshes the OAuth access token transparently if it's expired or close to it.
+    """
+    integration = crud.get_jira_integration_row(db, org_id)
+    if integration is None:
         raise ValueError("No Jira integration configured for this org")
-    return HTTPBasicAuth(creds.email, creds.api_token), creds.base_url, creds.project_key
+
+    if integration.email:
+        creds = crud.get_jira_creds(db, org_id)
+        return creds.base_url, creds.base_url, creds.project_key, HTTPBasicAuth(creds.email, creds.api_token), {}
+
+    if integration.encrypted_refresh_token:
+        access_token = jira_oauth.ensure_fresh_access_token(db, integration)
+        request_base_url = f"https://api.atlassian.com/ex/jira/{integration.cloud_id}"
+        return request_base_url, integration.base_url, integration.project_key, None, {"Authorization": f"Bearer {access_token}"}
+
+    raise ValueError("Jira integration has neither classic credentials nor an OAuth refresh token")
 
 
 def find_duplicate(db: Session, org_id: uuid.UUID, triage: dict) -> Optional[dict]:
     """Search Jira for an existing open bug with the same component and similar title.
     Returns {"key": ..., "url": ..., "title": ...} if a duplicate is found, else None.
     """
-    auth, base_url, project_key = _auth_for_org(db, org_id)
-    headers = {"Accept": "application/json"}
+    base_url, browse_base_url, project_key, auth, extra_headers = _connection_for_org(db, org_id)
+    headers = {"Accept": "application/json", **extra_headers}
 
     # Build search terms from title + component + bug_type for broader matching
     STOPWORDS = {"with", "that", "this", "from", "have", "been", "when", "after", "into", "over", "some", "just"}
@@ -67,7 +86,7 @@ def find_duplicate(db: Session, org_id: uuid.UUID, triage: dict) -> Optional[dic
             issue_key = issue["key"]
             return {
                 "key": issue_key,
-                "url": f"{base_url}/browse/{issue_key}",
+                "url": f"{browse_base_url}/browse/{issue_key}",
                 "title": issue["fields"]["summary"],
             }
 
@@ -76,8 +95,8 @@ def find_duplicate(db: Session, org_id: uuid.UUID, triage: dict) -> Optional[dic
 
 def create_jira_ticket(db: Session, org_id: uuid.UUID, triage: dict) -> dict:
     """Create a Jira issue from a triage result. Returns the created issue key and URL."""
-    auth, base_url, project_key = _auth_for_org(db, org_id)
-    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    base_url, browse_base_url, project_key, auth, extra_headers = _connection_for_org(db, org_id)
+    headers = {"Accept": "application/json", "Content-Type": "application/json", **extra_headers}
 
     severity = triage.get("severity", "P3")
     priority = SEVERITY_TO_PRIORITY.get(severity, "Medium")
@@ -180,5 +199,5 @@ def create_jira_ticket(db: Session, org_id: uuid.UUID, triage: dict) -> dict:
 
     data = response.json()
     issue_key = data["key"]
-    issue_url = f"{base_url}/browse/{issue_key}"
+    issue_url = f"{browse_base_url}/browse/{issue_key}"
     return {"key": issue_key, "url": issue_url}

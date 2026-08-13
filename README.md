@@ -86,15 +86,22 @@ Labels: ['urgent-review']
 - Auto-regression test generation
 
 ## Multi-tenant data layer (in progress)
-Schema for moving off flat-file storage (`outputs/*.json`, `vector_store.json`) and
-single-org `.env` credentials, toward one Postgres database shared by multiple orgs:
+Moved off flat-file storage (`outputs/*.json`, `vector_store.json`) and single-org
+`.env` credentials, onto one Postgres database, scoped by org — still single-tenant
+in practice (`DEFAULT_ORG_SLUG`) until real accounts/signup exist, but every table,
+credential, and duplicate-detection query already goes through `org_id`.
 
 - **Tables** (`backend/db/models.py`): `orgs`, `users`, `jira_integrations`,
-  `slack_integrations`, `triages`, `bug_embeddings` — everything scoped by `org_id`.
+  `slack_integrations`, `triages`, `bug_embeddings`.
 - **Embeddings**: `bug_embeddings.embedding` is a pgvector column (384-dim,
   matching `all-MiniLM-L6-v2`) with an HNSW index, replacing `vector_store.json`.
-- **Credentials**: Jira/Slack tokens are stored encrypted (`backend/db/crypto.py`,
-  Fernet) rather than in a shared `.env` — each org will get its own connection.
+- **Jira auth, two modes** (`backend/jira_client.py` picks whichever an org has):
+  - *Classic* — email + API token, seeded once via `scripts/seed_default_org.py`.
+    No refresh mechanism; the token just dies eventually with no warning.
+  - *OAuth 2.0 (3LO)* (`backend/oauth/jira.py`) — `GET /integrations/jira/connect?project_key=BT`
+    starts the Atlassian consent flow; the access token refreshes itself
+    indefinitely afterward. This is the one that doesn't go stale.
+- **Credentials**: encrypted at rest (`backend/db/crypto.py`, Fernet), never in `.env` per-org.
 
 Setup (free tier):
 1. Create a project at [supabase.com](https://supabase.com) (free Postgres + pgvector included).
@@ -103,10 +110,14 @@ Setup (free tier):
 3. Generate an encryption key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
    and set it as `ENCRYPTION_KEY` in `.env`.
 4. Run migrations: `alembic upgrade head`.
+5. Either seed classic Jira creds (`python -m scripts.seed_default_org`, after
+   setting `JIRA_*` in `.env`) or connect via OAuth (register an app per the
+   `JIRA_OAUTH_*` comments in `.env.example`, then hit `/integrations/jira/connect`).
 
-Not yet wired up: `triage.py`/`jira_client.py`/`slack_bot.py` still read from
-flat files and a single `.env`'s worth of credentials — the schema exists but the
-app code hasn't been switched over to per-org lookups yet.
+Not yet wired up: Slack is still a single hardcoded bot token
+(`SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN`) — no Slack OAuth install flow yet, so
+`slack_integrations` exists in the schema but nothing writes to it. Real
+multi-tenancy also still needs accounts/login to replace `DEFAULT_ORG_SLUG`.
 
 ## Troubleshooting
 - API key invalid → 422 error

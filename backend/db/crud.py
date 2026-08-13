@@ -68,6 +68,42 @@ def get_jira_creds(db: Session, org_id: uuid.UUID) -> Optional[JiraCreds]:
     )
 
 
+def get_jira_integration_row(db: Session, org_id: uuid.UUID) -> Optional[models.JiraIntegration]:
+    """Raw ORM row, for callers (jira_client.py) that need to tell classic vs OAuth
+    auth apart and, for OAuth, mutate the row in place when refreshing tokens."""
+    return db.scalar(select(models.JiraIntegration).where(models.JiraIntegration.org_id == org_id))
+
+
+def store_jira_oauth_integration(
+    db: Session,
+    org_id: uuid.UUID,
+    cloud_id: str,
+    base_url: str,
+    project_key: str,
+    access_token: str,
+    refresh_token: str,
+    expires_at,
+) -> models.JiraIntegration:
+    """OAuth 2.0 (3LO) auth. email stays null — that's how jira_client.py tells
+    this apart from the classic email+API-token integration."""
+    integration = db.scalar(select(models.JiraIntegration).where(models.JiraIntegration.org_id == org_id))
+    if integration is None:
+        integration = models.JiraIntegration(org_id=org_id)
+        db.add(integration)
+
+    integration.email = None
+    integration.cloud_id = cloud_id
+    integration.base_url = base_url.rstrip("/")
+    integration.project_key = project_key
+    integration.encrypted_access_token = encrypt(access_token)
+    integration.encrypted_refresh_token = encrypt(refresh_token)
+    integration.token_expires_at = expires_at
+
+    db.commit()
+    db.refresh(integration)
+    return integration
+
+
 def create_triage(db: Session, org_id: uuid.UUID, raw_text: str, triage: dict) -> models.Triage:
     row = models.Triage(
         org_id=org_id,
