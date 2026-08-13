@@ -11,6 +11,7 @@ from .triage import triage_bug
 from .db import crud
 from .db.session import get_db
 from .oauth import jira as jira_oauth
+from .oauth import slack as slack_oauth
 from .oauth.state import InvalidState, create_state, verify_state
 
 app = FastAPI(title="Bug Triage AI Backend")
@@ -51,7 +52,7 @@ async def jira_connect(project_key: str, db: Session = Depends(get_db), org_id=D
     """Kicks off the Atlassian OAuth consent flow. project_key is the Jira project
     tickets get filed into — Jira's OAuth grant doesn't imply one, so the org has
     to pick it before redirecting (there's no later step where we ask again)."""
-    state = create_state(org_id, project_key)
+    state = create_state(org_id, {"project_key": project_key})
     return RedirectResponse(jira_oauth.build_authorize_url(state))
 
 
@@ -81,12 +82,41 @@ async def jira_callback(code: str, state: str, db: Session = Depends(get_db)):
         org_id=payload.org_id,
         cloud_id=site["id"],
         base_url=site["url"],
-        project_key=payload.project_key,
+        project_key=payload.data["project_key"],
         access_token=tokens["access_token"],
         refresh_token=tokens["refresh_token"],
         expires_at=expires_at,
     )
     return {"status": "connected", "site": site["url"], "project_key": integration.project_key}
+
+
+@app.get("/integrations/slack/connect")
+async def slack_connect(bugs_channel: str = "bugs", org_id=Depends(get_current_org_id)):
+    """Kicks off the Slack "Add to Slack" OAuth consent flow."""
+    state = create_state(org_id, {"bugs_channel": bugs_channel})
+    return RedirectResponse(slack_oauth.build_authorize_url(state))
+
+
+@app.get("/integrations/slack/callback")
+async def slack_callback(code: str, state: str, db: Session = Depends(get_db)):
+    try:
+        payload = verify_state(state)
+    except InvalidState as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        tokens = slack_oauth.exchange_code_for_tokens(code)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    integration = crud.store_slack_oauth_integration(
+        db,
+        org_id=payload.org_id,
+        team_id=tokens["team"]["id"],
+        bot_token=tokens["access_token"],
+        bugs_channel=payload.data.get("bugs_channel", "bugs"),
+    )
+    return {"status": "connected", "team": tokens["team"]["name"], "bugs_channel": integration.bugs_channel}
 
 
 @app.get("/health")

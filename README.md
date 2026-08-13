@@ -101,6 +101,16 @@ credential, and duplicate-detection query already goes through `org_id`.
   - *OAuth 2.0 (3LO)* (`backend/oauth/jira.py`) — `GET /integrations/jira/connect?project_key=BT`
     starts the Atlassian consent flow; the access token refreshes itself
     indefinitely afterward. This is the one that doesn't go stale.
+- **Slack auth** (`backend/oauth/slack.py`) — `GET /integrations/slack/connect?bugs_channel=bugs`
+  starts the "Add to Slack" OAuth flow and stores the resulting bot token per org.
+  Bot tokens don't expire on their own, so unlike Jira there's no refresh step.
+  **Important gap**: this only covers *storing* a token per org — the running
+  `slack_bot.py` process still authenticates as one hardcoded `SLACK_BOT_TOKEN`
+  via Socket Mode, which is inherently single-workspace-per-process. It does not
+  yet read from `slack_integrations` to serve multiple installed workspaces.
+  Doing that needs an installation store (Bolt's `OAuthSettings`) and likely a
+  switch from Socket Mode to the HTTP Events API — Socket Mode's app-level-token
+  model doesn't map cleanly onto "one bot token per installed workspace."
 - **Credentials**: encrypted at rest (`backend/db/crypto.py`, Fernet), never in `.env` per-org.
 
 Setup (free tier):
@@ -113,11 +123,12 @@ Setup (free tier):
 5. Either seed classic Jira creds (`python -m scripts.seed_default_org`, after
    setting `JIRA_*` in `.env`) or connect via OAuth (register an app per the
    `JIRA_OAUTH_*` comments in `.env.example`, then hit `/integrations/jira/connect`).
+6. Optionally connect Slack via OAuth too (register an app per the `SLACK_OAUTH_*`
+   comments, then hit `/integrations/slack/connect`) — see the gap noted above
+   before expecting this to change what `slack_bot.py` actually does at runtime.
 
-Not yet wired up: Slack is still a single hardcoded bot token
-(`SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN`) — no Slack OAuth install flow yet, so
-`slack_integrations` exists in the schema but nothing writes to it. Real
-multi-tenancy also still needs accounts/login to replace `DEFAULT_ORG_SLUG`.
+Real multi-tenancy still needs accounts/login to replace `DEFAULT_ORG_SLUG`, and
+the Slack runtime gap above.
 
 ## Troubleshooting
 - API key invalid → 422 error

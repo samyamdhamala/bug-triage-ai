@@ -104,6 +104,31 @@ def store_jira_oauth_integration(
     return integration
 
 
+def get_slack_integration_row(db: Session, org_id: uuid.UUID) -> Optional[models.SlackIntegration]:
+    return db.scalar(select(models.SlackIntegration).where(models.SlackIntegration.org_id == org_id))
+
+
+def store_slack_oauth_integration(
+    db: Session,
+    org_id: uuid.UUID,
+    team_id: str,
+    bot_token: str,
+    bugs_channel: str,
+) -> models.SlackIntegration:
+    integration = get_slack_integration_row(db, org_id)
+    if integration is None:
+        integration = models.SlackIntegration(org_id=org_id)
+        db.add(integration)
+
+    integration.team_id = team_id
+    integration.bugs_channel = bugs_channel
+    integration.encrypted_bot_token = encrypt(bot_token)
+
+    db.commit()
+    db.refresh(integration)
+    return integration
+
+
 def create_triage(db: Session, org_id: uuid.UUID, raw_text: str, triage: dict) -> models.Triage:
     row = models.Triage(
         org_id=org_id,
