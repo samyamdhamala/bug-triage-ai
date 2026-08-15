@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -6,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from .models import BugInput, TriageOutput
+from .auth import AuthedUser, create_access_token, get_current_user, hash_password, verify_password
+from .models import BugInput, LoginInput, SignupInput, TokenOutput, TriageOutput
 from .triage import triage_bug
 from .db import crud
 from .db.session import get_db
@@ -26,21 +26,38 @@ app.add_middleware(
 )
 
 
-def get_current_org_id(db: Session = Depends(get_db)) -> str:
-    """Resolves the org for this request. Single-org placeholder until
-    accounts/auth exist — every request currently maps to DEFAULT_ORG_SLUG.
-    """
-    slug = os.environ.get("DEFAULT_ORG_SLUG", "default")
-    org = crud.get_org_by_slug(db, slug)
-    if org is None:
-        raise HTTPException(status_code=500, detail=f"Org '{slug}' not found — run scripts/seed_default_org.py first")
-    return org.id
+@app.post("/auth/signup", response_model=TokenOutput)
+async def signup(input: SignupInput, db: Session = Depends(get_db)):
+    if crud.get_user_by_email(db, input.email) is not None:
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+    org = crud.create_org_with_unique_slug(db, input.org_name)
+    user = crud.create_user(
+        db,
+        org_id=org.id,
+        email=input.email,
+        name=input.name,
+        role="admin",  # first user in a new org is its admin
+        password_hash=hash_password(input.password),
+    )
+    token = create_access_token(user.id, user.org_id, user.role)
+    return TokenOutput(access_token=token)
+
+
+@app.post("/auth/login", response_model=TokenOutput)
+async def login(input: LoginInput, db: Session = Depends(get_db)):
+    user = crud.get_user_by_email(db, input.email)
+    if user is None or user.password_hash is None or not verify_password(input.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+
+    token = create_access_token(user.id, user.org_id, user.role)
+    return TokenOutput(access_token=token)
 
 
 @app.post("/triage", response_model=TriageOutput)
-async def triage_endpoint(input: BugInput, db: Session = Depends(get_db), org_id=Depends(get_current_org_id)):
+async def triage_endpoint(input: BugInput, db: Session = Depends(get_db), authed: AuthedUser = Depends(get_current_user)):
     try:
-        result = triage_bug(db, org_id, input.bug, save_output=True)
+        result = triage_bug(db, authed.org_id, input.bug, save_output=True)
         return TriageOutput(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -48,11 +65,11 @@ async def triage_endpoint(input: BugInput, db: Session = Depends(get_db), org_id
         raise HTTPException(status_code=500, detail=f"Triage failed: {str(e)}")
 
 @app.get("/integrations/jira/connect")
-async def jira_connect(project_key: str, db: Session = Depends(get_db), org_id=Depends(get_current_org_id)):
+async def jira_connect(project_key: str, authed: AuthedUser = Depends(get_current_user)):
     """Kicks off the Atlassian OAuth consent flow. project_key is the Jira project
     tickets get filed into — Jira's OAuth grant doesn't imply one, so the org has
     to pick it before redirecting (there's no later step where we ask again)."""
-    state = create_state(org_id, {"project_key": project_key})
+    state = create_state(authed.org_id, {"project_key": project_key})
     return RedirectResponse(jira_oauth.build_authorize_url(state))
 
 
@@ -91,9 +108,9 @@ async def jira_callback(code: str, state: str, db: Session = Depends(get_db)):
 
 
 @app.get("/integrations/slack/connect")
-async def slack_connect(bugs_channel: str = "bugs", org_id=Depends(get_current_org_id)):
+async def slack_connect(bugs_channel: str = "bugs", authed: AuthedUser = Depends(get_current_user)):
     """Kicks off the Slack "Add to Slack" OAuth consent flow."""
-    state = create_state(org_id, {"bugs_channel": bugs_channel})
+    state = create_state(authed.org_id, {"bugs_channel": bugs_channel})
     return RedirectResponse(slack_oauth.build_authorize_url(state))
 
 

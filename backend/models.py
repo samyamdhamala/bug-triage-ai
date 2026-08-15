@@ -33,3 +33,17 @@ class TriageOutput(BaseModel):
     class Config:
         extra = 'ignore'
 
+class SignupInput(BaseModel):
+    org_name: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=3)
+    password: str = Field(..., min_length=8)
+    name: str = ""
+
+class LoginInput(BaseModel):
+    email: str
+    password: str
+
+class TokenOutput(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+

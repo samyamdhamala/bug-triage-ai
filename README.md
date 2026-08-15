@@ -87,12 +87,20 @@ Labels: ['urgent-review']
 
 ## Multi-tenant data layer (in progress)
 Moved off flat-file storage (`outputs/*.json`, `vector_store.json`) and single-org
-`.env` credentials, onto one Postgres database, scoped by org — still single-tenant
-in practice (`DEFAULT_ORG_SLUG`) until real accounts/signup exist, but every table,
-credential, and duplicate-detection query already goes through `org_id`.
+`.env` credentials, onto one Postgres database, scoped by org, with real
+accounts (`POST /auth/signup`, `POST /auth/login`) resolving `org_id` per
+request instead of a hardcoded env var.
 
 - **Tables** (`backend/db/models.py`): `orgs`, `users`, `jira_integrations`,
   `slack_integrations`, `triages`, `bug_embeddings`.
+- **Accounts** (`backend/auth.py`) — `POST /auth/signup {org_name, email, password}`
+  creates a new org plus its first (admin) user and returns a JWT; `POST /auth/login`
+  returns one for existing users. `/triage` and both `/integrations/*/connect`
+  endpoints now require `Authorization: Bearer <token>` and act on the caller's
+  own org — bcrypt for password hashing, plain JWT bearer sessions, no refresh
+  tokens/email verification/password reset (not needed yet, easy to add later).
+  `DEFAULT_ORG_SLUG` still exists but now only backs `scripts/seed_default_org.py`
+  and the Slack bot process, neither of which goes through login.
 - **Embeddings**: `bug_embeddings.embedding` is a pgvector column (384-dim,
   matching `all-MiniLM-L6-v2`) with an HNSW index, replacing `vector_store.json`.
 - **Jira auth, two modes** (`backend/jira_client.py` picks whichever an org has):
@@ -120,15 +128,21 @@ Setup (free tier):
 3. Generate an encryption key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
    and set it as `ENCRYPTION_KEY` in `.env`.
 4. Run migrations: `alembic upgrade head`.
-5. Either seed classic Jira creds (`python -m scripts.seed_default_org`, after
-   setting `JIRA_*` in `.env`) or connect via OAuth (register an app per the
-   `JIRA_OAUTH_*` comments in `.env.example`, then hit `/integrations/jira/connect`).
-6. Optionally connect Slack via OAuth too (register an app per the `SLACK_OAUTH_*`
+5. Generate a JWT secret: `python -c "import secrets; print(secrets.token_hex(32))"`
+   and set it as `JWT_SECRET` in `.env`.
+6. Sign up: `POST /auth/signup {"org_name": "Acme", "email": "you@acme.com", "password": "..."}`,
+   save the returned `access_token`, and send it as `Authorization: Bearer <token>`
+   on `/triage` and the `/integrations/*/connect` calls below.
+7. Connect Jira: classic creds (`python -m scripts.seed_default_org`, a separate
+   env-based path that doesn't need login) or OAuth (register an app per the
+   `JIRA_OAUTH_*` comments in `.env.example`, then hit `/integrations/jira/connect`
+   with your bearer token).
+8. Optionally connect Slack via OAuth too (register an app per the `SLACK_OAUTH_*`
    comments, then hit `/integrations/slack/connect`) — see the gap noted above
    before expecting this to change what `slack_bot.py` actually does at runtime.
 
-Real multi-tenancy still needs accounts/login to replace `DEFAULT_ORG_SLUG`, and
-the Slack runtime gap above.
+Still open: the Slack runtime gap above, and a picker for orgs with multiple
+accessible Jira sites (currently takes the first one).
 
 ## Troubleshooting
 - API key invalid → 422 error

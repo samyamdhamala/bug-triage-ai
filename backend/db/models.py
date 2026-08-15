@@ -44,6 +44,10 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), default="")
     role: Mapped[UserRole] = mapped_column(String(20), default=UserRole.MEMBER)
+    # Null until real accounts land everywhere (e.g. rows created by older
+    # seed paths); login rejects any user without one rather than treating
+    # null as a wildcard credential.
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     org: Mapped["Org"] = relationship(back_populates="users")

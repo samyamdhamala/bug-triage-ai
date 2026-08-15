@@ -1,3 +1,4 @@
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Optional
@@ -22,6 +23,40 @@ def get_or_create_org(db: Session, slug: str, name: str) -> models.Org:
     db.commit()
     db.refresh(org)
     return org
+
+
+def _slugify(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "org"
+
+
+def create_org_with_unique_slug(db: Session, name: str) -> models.Org:
+    """Used by signup — org names aren't unique, so this appends -2, -3, ...
+    on collision rather than failing the whole signup over a naming clash."""
+    base_slug = _slugify(name)
+    slug = base_slug
+    suffix = 1
+    while get_org_by_slug(db, slug) is not None:
+        suffix += 1
+        slug = f"{base_slug}-{suffix}"
+
+    org = models.Org(name=name, slug=slug)
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[models.User]:
+    return db.scalar(select(models.User).where(models.User.email == email))
+
+
+def create_user(db: Session, org_id: uuid.UUID, email: str, name: str, role: str, password_hash: str) -> models.User:
+    user = models.User(org_id=org_id, email=email, name=name, role=role, password_hash=password_hash)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def upsert_jira_integration(
