@@ -6,7 +6,8 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from .auth import AuthedUser, create_access_token, get_current_user, hash_password, verify_password
-from .models import BugInput, LoginInput, SignupInput, TokenOutput, TriageOutput
+from .models import BugInput, LoginInput, RoutingRulesInput, SignupInput, TokenOutput, TriageOutput
+from .rules import DEFAULT_RULE_MAPPINGS
 from .triage import triage_bug
 from .db import crud
 from .db.session import get_db
@@ -64,12 +65,36 @@ async def triage_endpoint(input: BugInput, db: Session = Depends(get_db), authed
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Triage failed: {str(e)}")
 
+def _select_jira_site(resources: list[dict], site_url_hint: str | None) -> dict:
+    """Picks which accessible Jira site to connect. The common case (one site)
+    needs no hint at all. With several, site_url_hint (a substring of the site's
+    host, e.g. "acme" or "acme.atlassian.net") disambiguates; without a matching
+    hint we refuse to silently guess and list the options instead."""
+    if len(resources) == 1:
+        return resources[0]
+
+    if site_url_hint:
+        hint = site_url_hint.lower().replace("https://", "").replace("http://", "").rstrip("/")
+        for site in resources:
+            site_host = site["url"].lower().replace("https://", "").replace("http://", "").rstrip("/")
+            if hint == site_host or hint in site_host:
+                return site
+
+    available = ", ".join(f'{s["name"]} ({s["url"]})' for s in resources)
+    raise ValueError(
+        "This account has access to multiple Jira sites — retry /integrations/jira/connect "
+        f"with &site_url=<the one you want>. Available: {available}"
+    )
+
+
 @app.get("/integrations/jira/connect")
-async def jira_connect(project_key: str, authed: AuthedUser = Depends(get_current_user)):
+async def jira_connect(project_key: str, site_url: str | None = None, authed: AuthedUser = Depends(get_current_user)):
     """Kicks off the Atlassian OAuth consent flow. project_key is the Jira project
     tickets get filed into — Jira's OAuth grant doesn't imply one, so the org has
-    to pick it before redirecting (there's no later step where we ask again)."""
-    state = create_state(authed.org_id, {"project_key": project_key})
+    to pick it before redirecting (there's no later step where we ask again).
+    site_url disambiguates which Jira site to use if this account has more than
+    one; harmless to omit if there's only one, which is the common case."""
+    state = create_state(authed.org_id, {"project_key": project_key, "site_url": site_url})
     return RedirectResponse(jira_oauth.build_authorize_url(state))
 
 
@@ -89,9 +114,11 @@ async def jira_callback(code: str, state: str, db: Session = Depends(get_db)):
     if not resources:
         raise HTTPException(status_code=400, detail="No accessible Jira sites for this account — grant access to at least one site during consent")
 
-    # MVP: take the first accessible site. An org with multiple Jira sites will
-    # need a picker here eventually; out of scope until that's a real complaint.
-    site = resources[0]
+    try:
+        site = _select_jira_site(resources, payload.data.get("site_url"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=tokens.get("expires_in", 3600))
 
     integration = crud.store_jira_oauth_integration(
@@ -135,6 +162,18 @@ async def slack_callback(code: str, state: str, db: Session = Depends(get_db)):
         bugs_channel=payload.data.get("bugs_channel", "bugs"),
     )
     return {"status": "connected", "team": tokens["team"]["name"], "bugs_channel": integration.bugs_channel}
+
+
+@app.get("/settings/routing-rules")
+async def get_routing_rules(db: Session = Depends(get_db), authed: AuthedUser = Depends(get_current_user)):
+    custom = crud.get_org_routing_rules(db, authed.org_id)
+    return {"rules": custom if custom is not None else DEFAULT_RULE_MAPPINGS, "is_custom": custom is not None}
+
+
+@app.put("/settings/routing-rules")
+async def set_routing_rules(input: RoutingRulesInput, db: Session = Depends(get_db), authed: AuthedUser = Depends(get_current_user)):
+    org = crud.update_org_routing_rules(db, authed.org_id, input.rules)
+    return {"rules": org.routing_rules, "is_custom": True}
 
 
 @app.get("/health")

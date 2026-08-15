@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import List
+from typing import Dict, List
 from enum import Enum
 
 class Severity(str, Enum):
@@ -46,4 +46,7 @@ class LoginInput(BaseModel):
 class TokenOutput(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+class RoutingRulesInput(BaseModel):
+    rules: Dict[str, str] = Field(..., description="keyword (lowercase) -> team name")
 

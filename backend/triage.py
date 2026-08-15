@@ -80,7 +80,8 @@ def triage_bug(db: Session, org_id: uuid.UUID, raw_text: str, save_output: bool 
         raise ValueError(f"Invalid triage structure: {e}")
 
     # Rule enhancements
-    enhanced = enhance_triage(output.model_dump())
+    routing_rules = crud.get_org_routing_rules(db, org_id)
+    enhanced = enhance_triage(output.model_dump(), routing_rules)
 
     # Persist
     if save_output:

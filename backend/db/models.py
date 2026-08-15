@@ -28,6 +28,9 @@ class Org(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column(String(255))
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # Null = use rules.py's DEFAULT_RULE_MAPPINGS. {keyword: team} when an org
+    # has configured its own team routing via PUT /settings/routing-rules.
+    routing_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     users: Mapped[list["User"]] = relationship(back_populates="org", cascade="all, delete-orphan")

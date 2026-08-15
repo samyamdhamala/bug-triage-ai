@@ -25,6 +25,21 @@ def get_or_create_org(db: Session, slug: str, name: str) -> models.Org:
     return org
 
 
+def get_org_routing_rules(db: Session, org_id: uuid.UUID) -> Optional[dict]:
+    """None means the org hasn't configured its own rules — callers fall back
+    to rules.py's DEFAULT_RULE_MAPPINGS in that case."""
+    org = db.get(models.Org, org_id)
+    return org.routing_rules if org else None
+
+
+def update_org_routing_rules(db: Session, org_id: uuid.UUID, routing_rules: dict) -> models.Org:
+    org = db.get(models.Org, org_id)
+    org.routing_rules = routing_rules
+    db.commit()
+    db.refresh(org)
+    return org
+
+
 def _slugify(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return slug or "org"

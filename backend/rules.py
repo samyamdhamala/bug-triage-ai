@@ -1,6 +1,6 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
-RULE_MAPPINGS = {
+DEFAULT_RULE_MAPPINGS = {
     # Team routing keywords -> team
     'auth': 'Auth Team',
     'login': 'Auth Team', 
@@ -23,10 +23,13 @@ RULE_MAPPINGS = {
     'backend': 'Backend Team',
 }
 
-def apply_team_routing(triage: Dict[str, Any]) -> str:
-    """Deterministic team routing based on keywords in title/actual_behavior."""
+def apply_team_routing(triage: Dict[str, Any], routing_rules: Optional[Dict[str, str]] = None) -> str:
+    """Deterministic team routing based on keywords in title/actual_behavior.
+    routing_rules overrides the built-in defaults when an org has configured
+    its own (see backend/db/crud.py::get_org_routing_rules)."""
+    mappings = routing_rules if routing_rules else DEFAULT_RULE_MAPPINGS
     text = (triage.get('title', '') + ' ' + triage.get('actual_behavior', '')).lower()
-    for keyword, team in RULE_MAPPINGS.items():
+    for keyword, team in mappings.items():
         if keyword in text:
             return team
     return triage.get('suggested_assignee_team', 'Triage Team')
@@ -63,9 +66,9 @@ def add_review_labels(triage: Dict[str, Any]) -> List[str]:
     
     return labels
 
-def enhance_triage(triage: Dict[str, Any]) -> Dict[str, Any]:
+def enhance_triage(triage: Dict[str, Any], routing_rules: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """Apply all rules post-LLM."""
-    triage['suggested_assignee_team'] = apply_team_routing(triage)
+    triage['suggested_assignee_team'] = apply_team_routing(triage, routing_rules)
     triage['severity'], triage['priority_reasoning'] = apply_severity_hints(triage)
     triage['suggested_labels'] = add_review_labels(triage)
     return triage

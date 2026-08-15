@@ -123,6 +123,15 @@ request instead of a hardcoded env var.
   connection just fine once an installation store is in the loop.) Bot tokens
   don't expire on their own, so unlike Jira there's no refresh step.
 - **Credentials**: encrypted at rest (`backend/db/crypto.py`, Fernet), never in `.env` per-org.
+- **Multiple Jira sites**: `/integrations/jira/connect` takes an optional `site_url`
+  hint (e.g. `?site_url=acme`) to disambiguate accounts with access to more than
+  one Jira site. Omit it if there's only one, the common case — no picker UI
+  needed for that. With several and no (or a wrong) hint, the callback returns a
+  clear 400 listing the available sites rather than silently picking one.
+- **Per-org routing rules** — `rules.py`'s keyword→team mapping (`DEFAULT_RULE_MAPPINGS`)
+  is a sane default every org starts with; `GET`/`PUT /settings/routing-rules`
+  reads/overrides it per org (`orgs.routing_rules`, null = still using the default).
+  The same bug report can route to a different team in different orgs.
 
 Setup (free tier):
 1. Create a project at [supabase.com](https://supabase.com) (free Postgres + pgvector included).
@@ -145,9 +154,8 @@ Setup (free tier):
    set `SLACK_APP_TOKEN`/`SLACK_SIGNING_SECRET` from the app's Basic Information
    page, hit `/integrations/slack/connect`, then run `python slack_bot.py`.
 
-Still open: a picker for orgs with multiple accessible Jira sites (currently
-takes the first one), and real per-org settings for `rules.py`'s keyword-based
-team routing (currently global, not per-org).
+Still open: the parked reconciliation with `master`'s separate CI/QA/dedup
+scaling work (see git history — deliberately not touched yet).
 
 ## Troubleshooting
 - API key invalid → 422 error
