@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,7 +66,7 @@ async def triage_endpoint(input: BugInput, db: Session = Depends(get_db), authed
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Triage failed: {str(e)}")
 
-def _select_jira_site(resources: list[dict], site_url_hint: str | None) -> dict:
+def _select_jira_site(resources: list[dict], site_url_hint: Optional[str]) -> dict:
     """Picks which accessible Jira site to connect. The common case (one site)
     needs no hint at all. With several, site_url_hint (a substring of the site's
     host, e.g. "acme" or "acme.atlassian.net") disambiguates; without a matching
@@ -88,7 +89,7 @@ def _select_jira_site(resources: list[dict], site_url_hint: str | None) -> dict:
 
 
 @app.get("/integrations/jira/connect")
-async def jira_connect(project_key: str, site_url: str | None = None, authed: AuthedUser = Depends(get_current_user)):
+async def jira_connect(project_key: str, site_url: Optional[str] = None, authed: AuthedUser = Depends(get_current_user)):
     """Kicks off the Atlassian OAuth consent flow. project_key is the Jira project
     tickets get filed into — Jira's OAuth grant doesn't imply one, so the org has
     to pick it before redirecting (there's no later step where we ask again).

@@ -16,6 +16,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
+from typing import Optional
 
 STATE_TTL_SECONDS = 600  # 10 minutes — plenty for a user to complete a consent screen
 
@@ -38,7 +39,7 @@ class StatePayload:
     data: dict = field(default_factory=dict)
 
 
-def create_state(org_id: uuid.UUID, data: dict | None = None) -> str:
+def create_state(org_id: uuid.UUID, data: Optional[dict] = None) -> str:
     body = json.dumps({"org_id": str(org_id), "data": data or {}, "ts": int(time.time())}).encode()
     body_b64 = base64.urlsafe_b64encode(body).decode()
     signature = _sign(body_b64.encode())

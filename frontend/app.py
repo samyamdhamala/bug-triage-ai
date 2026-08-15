@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import json
 from pathlib import Path
+from typing import Optional
 
 BACKEND_URL = "http://localhost:8000"
 
@@ -63,7 +64,7 @@ def login_signup_screen():
                 st.error(f"Backend not running? Start with: `uvicorn backend.main:app --reload --port 8000`\n\nError: {e}")
 
 
-def get_connect_redirect_url(path: str, params: dict) -> str | None:
+def get_connect_redirect_url(path: str, params: dict) -> Optional[str]:
     """Hits a /connect endpoint with our auth header (a plain <a href> can't carry
     one) and returns the Location it redirects to, so we can hand the USER that
     URL to click through to Atlassian/Slack directly."""

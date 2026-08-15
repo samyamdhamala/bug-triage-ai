@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, JSON, String, Text, UniqueConstraint
@@ -30,7 +31,7 @@ class Org(Base):
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     # Null = use rules.py's DEFAULT_RULE_MAPPINGS. {keyword: team} when an org
     # has configured its own team routing via PUT /settings/routing-rules.
-    routing_rules: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    routing_rules: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     users: Mapped[list["User"]] = relationship(back_populates="org", cascade="all, delete-orphan")
@@ -50,7 +51,7 @@ class User(Base):
     # Null until real accounts land everywhere (e.g. rows created by older
     # seed paths); login rejects any user without one rather than treating
     # null as a wildcard credential.
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     org: Mapped["Org"] = relationship(back_populates="users")
@@ -70,10 +71,10 @@ class JiraIntegration(Base):
     # Classic auth (email + API token) for now; encrypted_refresh_token stays null
     # until this moves to OAuth 2.0 (3LO), which will populate it and email becomes
     # unused. encrypted_access_token holds the API token in the classic case.
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     encrypted_access_token: Mapped[str] = mapped_column(Text)
-    encrypted_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    token_expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    encrypted_refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     connected_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     org: Mapped["Org"] = relationship(back_populates="jira_integration")
@@ -95,7 +96,7 @@ class SlackIntegration(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id", ondelete="CASCADE"), index=True)
     team_id: Mapped[str] = mapped_column(String(50), index=True)
-    bot_user_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    bot_user_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     bugs_channel: Mapped[str] = mapped_column(String(255), default="bugs")
     encrypted_bot_token: Mapped[str] = mapped_column(Text)
     installed_at: Mapped[datetime] = mapped_column(server_default=func.now())
@@ -116,8 +117,8 @@ class Triage(Base):
     confidence: Mapped[str] = mapped_column(String(20))
     component: Mapped[str] = mapped_column(String(255), default="")
     payload: Mapped[dict] = mapped_column(JSON)  # full TriageOutput dict
-    jira_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    jira_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    jira_key: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    jira_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
 
     org: Mapped["Org"] = relationship(back_populates="triages")
