@@ -100,7 +100,8 @@ request instead of a hardcoded env var.
   own org — bcrypt for password hashing, plain JWT bearer sessions, no refresh
   tokens/email verification/password reset (not needed yet, easy to add later).
   `DEFAULT_ORG_SLUG` still exists but now only backs `scripts/seed_default_org.py`
-  and the Slack bot process, neither of which goes through login.
+  (classic Jira creds, a dev convenience path that doesn't go through login) —
+  Slack resolves its org per-workspace via `team_id` instead (see below).
 - **Embeddings**: `bug_embeddings.embedding` is a pgvector column (384-dim,
   matching `all-MiniLM-L6-v2`) with an HNSW index, replacing `vector_store.json`.
 - **Jira auth, two modes** (`backend/jira_client.py` picks whichever an org has):
@@ -109,16 +110,18 @@ request instead of a hardcoded env var.
   - *OAuth 2.0 (3LO)* (`backend/oauth/jira.py`) — `GET /integrations/jira/connect?project_key=BT`
     starts the Atlassian consent flow; the access token refreshes itself
     indefinitely afterward. This is the one that doesn't go stale.
-- **Slack auth** (`backend/oauth/slack.py`) — `GET /integrations/slack/connect?bugs_channel=bugs`
-  starts the "Add to Slack" OAuth flow and stores the resulting bot token per org.
-  Bot tokens don't expire on their own, so unlike Jira there's no refresh step.
-  **Important gap**: this only covers *storing* a token per org — the running
-  `slack_bot.py` process still authenticates as one hardcoded `SLACK_BOT_TOKEN`
-  via Socket Mode, which is inherently single-workspace-per-process. It does not
-  yet read from `slack_integrations` to serve multiple installed workspaces.
-  Doing that needs an installation store (Bolt's `OAuthSettings`) and likely a
-  switch from Socket Mode to the HTTP Events API — Socket Mode's app-level-token
-  model doesn't map cleanly onto "one bot token per installed workspace."
+- **Slack, multi-workspace** (`backend/oauth/slack.py`, `backend/oauth/slack_installation_store.py`) —
+  `GET /integrations/slack/connect?bugs_channel=bugs` starts the "Add to Slack" OAuth
+  flow and stores the resulting bot token per org. `slack_bot.py` runs one process
+  with one Socket Mode connection (one app-level token) that serves *every*
+  connected workspace — Bolt resolves the right bot token per incoming event via
+  `PostgresInstallationStore`, keyed by the event's `team_id`, instead of one
+  hardcoded `SLACK_BOT_TOKEN`. (Earlier note here claimed Socket Mode couldn't do
+  this without switching to the HTTP Events API — that was wrong; Socket Mode's
+  app-level token belongs to the Slack *app*, not to any one workspace
+  installation, so events from every installed workspace multiplex over the same
+  connection just fine once an installation store is in the loop.) Bot tokens
+  don't expire on their own, so unlike Jira there's no refresh step.
 - **Credentials**: encrypted at rest (`backend/db/crypto.py`, Fernet), never in `.env` per-org.
 
 Setup (free tier):
@@ -137,12 +140,14 @@ Setup (free tier):
    env-based path that doesn't need login) or OAuth (register an app per the
    `JIRA_OAUTH_*` comments in `.env.example`, then hit `/integrations/jira/connect`
    with your bearer token).
-8. Optionally connect Slack via OAuth too (register an app per the `SLACK_OAUTH_*`
-   comments, then hit `/integrations/slack/connect`) — see the gap noted above
-   before expecting this to change what `slack_bot.py` actually does at runtime.
+8. Optionally connect Slack too: register an app per the `SLACK_OAUTH_*` comments
+   (bot scopes: `channels:history`, `channels:read`, `chat:write`, `commands`),
+   set `SLACK_APP_TOKEN`/`SLACK_SIGNING_SECRET` from the app's Basic Information
+   page, hit `/integrations/slack/connect`, then run `python slack_bot.py`.
 
-Still open: the Slack runtime gap above, and a picker for orgs with multiple
-accessible Jira sites (currently takes the first one).
+Still open: a picker for orgs with multiple accessible Jira sites (currently
+takes the first one), and real per-org settings for `rules.py`'s keyword-based
+team routing (currently global, not per-org).
 
 ## Troubleshooting
 - API key invalid → 422 error

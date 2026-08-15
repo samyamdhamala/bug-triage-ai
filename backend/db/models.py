@@ -77,14 +77,22 @@ class JiraIntegration(Base):
 
 
 class SlackIntegration(Base):
-    """One Slack workspace connection per org, from the OAuth install flow."""
+    """One Slack workspace connection per org, from the OAuth install flow.
+    Looked up by team_id (not just org_id) at runtime — slack_bot.py resolves
+    which org a given Slack event belongs to via its team_id, since one bot
+    process now serves every connected workspace over a single Socket Mode
+    connection (see backend/oauth/slack_installation_store.py)."""
 
     __tablename__ = "slack_integrations"
-    __table_args__ = (UniqueConstraint("org_id", name="uq_slack_integration_org"),)
+    __table_args__ = (
+        UniqueConstraint("org_id", name="uq_slack_integration_org"),
+        UniqueConstraint("team_id", name="uq_slack_integration_team"),
+    )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("orgs.id", ondelete="CASCADE"), index=True)
-    team_id: Mapped[str] = mapped_column(String(50))
+    team_id: Mapped[str] = mapped_column(String(50), index=True)
+    bot_user_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     bugs_channel: Mapped[str] = mapped_column(String(255), default="bugs")
     encrypted_bot_token: Mapped[str] = mapped_column(Text)
     installed_at: Mapped[datetime] = mapped_column(server_default=func.now())

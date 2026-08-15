@@ -130,6 +130,7 @@ async def slack_callback(code: str, state: str, db: Session = Depends(get_db)):
         db,
         org_id=payload.org_id,
         team_id=tokens["team"]["id"],
+        bot_user_id=tokens.get("bot_user_id", ""),
         bot_token=tokens["access_token"],
         bugs_channel=payload.data.get("bugs_channel", "bugs"),
     )

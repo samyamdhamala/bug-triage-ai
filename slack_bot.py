@@ -1,4 +1,6 @@
 import os
+import uuid
+from dataclasses import dataclass
 from dotenv import load_dotenv
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -8,25 +10,36 @@ from backend.jira_client import create_jira_ticket, find_duplicate
 from backend.vector_store import find_similar, store_embedding
 from backend.db import crud
 from backend.db.session import get_session
+from backend.oauth.slack_installation_store import PostgresInstallationStore
 
 load_dotenv()
 
-app = App(token=os.environ["SLACK_BOT_TOKEN"])
+# One Socket Mode connection (one process, one app-level token) serves every
+# workspace that's installed the app via /integrations/slack/connect — Bolt
+# resolves the right bot token per event through PostgresInstallationStore,
+# so there's no single hardcoded SLACK_BOT_TOKEN anymore.
+app = App(signing_secret=os.environ["SLACK_SIGNING_SECRET"], installation_store=PostgresInstallationStore())
 
-_org_id_cache = None
+
+@dataclass
+class OrgSlackContext:
+    org_id: uuid.UUID
+    bugs_channel: str
 
 
-def _resolve_org_id(db):
-    """Single-org placeholder until accounts/auth exist — cached for the process
-    lifetime since the bot handles one workspace per run anyway."""
-    global _org_id_cache
-    if _org_id_cache is None:
-        slug = os.environ.get("DEFAULT_ORG_SLUG", "default")
-        org = crud.get_org_by_slug(db, slug)
-        if org is None:
-            raise ValueError(f"Org '{slug}' not found — run scripts/seed_default_org.py first")
-        _org_id_cache = org.id
-    return _org_id_cache
+_org_context_cache: dict[str, OrgSlackContext] = {}
+
+
+def _resolve_org_context(db, team_id: str) -> OrgSlackContext:
+    """Maps an incoming event's team_id to the org that connected it, cached for
+    the process lifetime (this mapping doesn't change without a fresh OAuth
+    connect, which would need a process restart to pick up anyway)."""
+    if team_id not in _org_context_cache:
+        integration = crud.get_slack_integration_by_team_id(db, team_id)
+        if integration is None:
+            raise ValueError(f"Workspace {team_id} isn't connected to any org — visit /integrations/slack/connect first")
+        _org_context_cache[team_id] = OrgSlackContext(org_id=integration.org_id, bugs_channel=integration.bugs_channel)
+    return _org_context_cache[team_id]
 
 
 def format_slack_message(result: dict) -> str:
@@ -60,11 +73,8 @@ def format_slack_message(result: dict) -> str:
 """.strip()
 
 
-BOT_USER_ID = None  # populated on startup to avoid self-triaging bot messages
-
-
 @app.event("message")
-def handle_message(event, say, client):
+def handle_message(event, say, client, context):
     # Ignore bot messages, edits, deletions, and thread replies
     if event.get("bot_id"):
         return
@@ -73,14 +83,18 @@ def handle_message(event, say, client):
     if event.get("thread_ts"):
         return
 
-    # Only listen to the #bugs channel
-    bugs_channel = os.environ.get("SLACK_BUGS_CHANNEL", "bugs")
+    try:
+        with get_session() as db:
+            org_ctx = _resolve_org_context(db, context["team_id"])
+    except ValueError:
+        return  # workspace connected to Slack but not to any org yet; nothing to do
+
     try:
         channel_info = client.conversations_info(channel=event["channel"])
         channel_name = channel_info["channel"]["name"]
     except Exception:
         return
-    if channel_name != bugs_channel.lstrip("#"):
+    if channel_name != org_ctx.bugs_channel.lstrip("#"):
         return
 
     text = event.get("text", "").strip()
@@ -91,7 +105,7 @@ def handle_message(event, say, client):
 
     try:
         with get_session() as db:
-            org_id = _resolve_org_id(db)
+            org_id = org_ctx.org_id
             result = triage_bug(db, org_id, text, save_output=True)
             message = format_slack_message(result)
 
@@ -125,7 +139,7 @@ def handle_message(event, say, client):
 
 
 @app.command("/triage")
-def handle_triage(ack, respond, command):
+def handle_triage(ack, respond, command, context):
     ack()
 
     bug_text = command.get("text", "").strip()
@@ -133,11 +147,18 @@ def handle_triage(ack, respond, command):
         respond("Please provide a bug description. Usage: `/triage <bug description>`")
         return
 
+    try:
+        with get_session() as db:
+            org_ctx = _resolve_org_context(db, context["team_id"])
+    except ValueError as e:
+        respond(f":x: {e}")
+        return
+
     respond(":hourglass_flowing_sand: Triaging your bug report...")
 
     try:
         with get_session() as db:
-            org_id = _resolve_org_id(db)
+            org_id = org_ctx.org_id
             result = triage_bug(db, org_id, bug_text, save_output=True)
             message = format_slack_message(result)
 

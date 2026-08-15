@@ -143,10 +143,19 @@ def get_slack_integration_row(db: Session, org_id: uuid.UUID) -> Optional[models
     return db.scalar(select(models.SlackIntegration).where(models.SlackIntegration.org_id == org_id))
 
 
+def get_slack_integration_by_team_id(db: Session, team_id: str) -> Optional[models.SlackIntegration]:
+    """The lookup slack_bot.py actually runs on every incoming event — one Socket
+    Mode connection now serves every connected workspace, so each event carries a
+    team_id that has to resolve to the right org (and bot token) before anything
+    else can happen."""
+    return db.scalar(select(models.SlackIntegration).where(models.SlackIntegration.team_id == team_id))
+
+
 def store_slack_oauth_integration(
     db: Session,
     org_id: uuid.UUID,
     team_id: str,
+    bot_user_id: str,
     bot_token: str,
     bugs_channel: str,
 ) -> models.SlackIntegration:
@@ -156,12 +165,25 @@ def store_slack_oauth_integration(
         db.add(integration)
 
     integration.team_id = team_id
+    integration.bot_user_id = bot_user_id
     integration.bugs_channel = bugs_channel
     integration.encrypted_bot_token = encrypt(bot_token)
 
     db.commit()
     db.refresh(integration)
     return integration
+
+
+def update_slack_bot_token(db: Session, integration_id: uuid.UUID, bot_token: str) -> None:
+    """Used by PostgresInstallationStore.save() — Bolt's own hook for persisting
+    a (re)installation. Our real write path is store_slack_oauth_integration via
+    the /integrations/slack/callback route; this exists so the store still behaves
+    correctly if Bolt ever calls save() on its own (e.g. token rotation)."""
+    integration = db.get(models.SlackIntegration, integration_id)
+    if integration is None:
+        return
+    integration.encrypted_bot_token = encrypt(bot_token)
+    db.commit()
 
 
 def create_triage(db: Session, org_id: uuid.UUID, raw_text: str, triage: dict) -> models.Triage:
